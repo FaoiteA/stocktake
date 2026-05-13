@@ -448,6 +448,10 @@ CREATE TRIGGER stock_items_updated_at
     <div class="vstat"><div class="vstat-lbl">Out of Stock</div><div class="vstat-val red" id="vs-out">1339</div></div>
     <div class="vstat" style="display:none" id="vs-low-wrap"><div class="vstat-lbl">Low Stock</div><div class="vstat-val amber" id="vs-low">0</div></div>
     <div class="vstat"><div class="vstat-lbl">Counted</div><div class="vstat-val amber" id="vs-counted">0%</div></div>
+    <div class="vstat"><div class="vstat-lbl">Dead Stock</div><div class="vstat-val red" id="vs-dead">€0</div></div>
+    <div class="vstat"><div class="vstat-lbl">Paid/Claimed</div><div class="vstat-val green" id="vs-paid">€0</div></div>
+    <div class="vstat"><div class="vstat-lbl">Wrote Off</div><div class="vstat-val amber" id="vs-wrote">€0</div></div>
+    <div class="vstat"><div class="vstat-lbl">Unpaid Warranty</div><div class="vstat-val amber" id="vs-warranty">€0</div></div>
   </div>
 
   <div class="tabs">
@@ -25741,6 +25745,11 @@ function render() {
   const outCount = items.filter(p => p.qty === 0).length;
   const countedCount = items.filter(p => p.counted_qty !== null).length;
   const pct = items.length ? Math.round(countedCount / items.length * 100) : 0;
+  const deadVal = items.filter(p => p.dead_stock).reduce((s,p) => s + itemValue(p), 0);
+  const paidVal = items.filter(p => p.paid_claimed).reduce((s,p) => s + itemValue(p), 0);
+  const wroteVal = items.filter(p => p.wrote_off).reduce((s,p) => s + itemValue(p), 0);
+  const activeSession = activeSessionId ? sessions.find(x => x.id === activeSessionId) : null;
+  const warrantyVal = activeSession ? Number(activeSession.warranty_value || 0) : 0;
 
   document.getElementById('vs-total').textContent = items.length;
   document.getElementById('vs-value').textContent = fmt(totalVal);
@@ -25748,6 +25757,10 @@ function render() {
   const lowCount = items.filter(p => p.qty > 0 && p.min_qty > 0 && p.qty <= p.min_qty).length;
   document.getElementById('vs-low').textContent = lowCount;
   document.getElementById('vs-counted').textContent = pct + '%';
+  document.getElementById('vs-dead').textContent = fmt(deadVal);
+  document.getElementById('vs-paid').textContent = fmt(paidVal);
+  document.getElementById('vs-wrote').textContent = fmt(wroteVal);
+  document.getElementById('vs-warranty').textContent = fmt(warrantyVal);
 
   ['all','out','dead','counted','disc','wrote','low','paid'].forEach(t =>
     document.getElementById('tab-'+t).classList.toggle('active', t===tab));
