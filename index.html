@@ -26725,7 +26725,7 @@ async function setActiveSession(id, name) {
     await sb.from('app_settings').upsert({ key: 'active_session_id', value: id });
     const s = sessions.find(x => x.id === id);
     if (s && s.snapshot && s.snapshot.length) {
-      items = s.snapshot.map(p => ({...p, change_log: p.change_log||[], min_qty: p.min_qty||0, counted_qty: p.counted_qty||null, dead_stock: p.dead_stock||false, wrote_off: p.wrote_off||false, paid_claimed: p.paid_claimed||false})));
+      items = s.snapshot.map(p => ({...p, change_log: p.change_log||[], min_qty: p.min_qty||0, counted_qty: p.counted_qty||null, dead_stock: p.dead_stock||false, wrote_off: p.wrote_off||false, paid_claimed: p.paid_claimed||false}));
     }
     document.getElementById('active-session-bar').style.display = 'block';
     document.getElementById('active-session-name').textContent = name;
@@ -26741,7 +26741,7 @@ function updateActiveSessionBar() {
     if (s) {
       document.getElementById('active-session-bar').style.display = 'block';
       document.getElementById('active-session-name').textContent = s.name;
-      items = s.snapshot.map(p => ({...p, change_log: p.change_log||[], min_qty: p.min_qty||0, counted_qty: p.counted_qty||null, dead_stock: p.dead_stock||false, wrote_off: p.wrote_off||false, paid_claimed: p.paid_claimed||false})));
+      items = s.snapshot.map(p => ({...p, change_log: p.change_log||[], min_qty: p.min_qty||0, counted_qty: p.counted_qty||null, dead_stock: p.dead_stock||false, wrote_off: p.wrote_off||false, paid_claimed: p.paid_claimed||false}));
     } else {
       // Session no longer exists
       activeSessionId = null;
