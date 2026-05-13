@@ -26407,9 +26407,9 @@ function parseXLSX(buf) {
       sku,
       name: String(r[colIdx.name]||'').trim(),
       area, location, qty, cost,
-      dead_stock: idx.dead >= 0 ? isTruthy(cells[idx.dead]) : false,
-      paid_claimed: idx.paid >= 0 ? isTruthy(cells[idx.paid]) : false,
-      wrote_off: idx.wrote >= 0 ? isTruthy(cells[idx.wrote]) : false,
+      dead_stock: colIdx.dead >= 0 ? isTruthy(r[colIdx.dead]) : false,
+      paid_claimed: colIdx.paid >= 0 ? isTruthy(r[colIdx.paid]) : false,
+      wrote_off: colIdx.wrote >= 0 ? isTruthy(r[colIdx.wrote]) : false,
       notes: ''
     });
   }
