@@ -8,10 +8,9 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="StockTake">
 <meta name="mobile-web-app-capable" content="yes">
-<link rel="manifest" href="https://stunning-pixie-50a1e0.netlify.app/manifest.json">
-<link rel="apple-touch-icon" href="https://stunning-pixie-50a1e0.netlify.app/icon-192.png">
-<link rel="icon" href="https://stunning-pixie-50a1e0.netlify.app/icon-192.png">
-<link href="./Stock Take_files/css2" rel="stylesheet">
+<link rel="apple-touch-icon" href="https://faoitea.github.io/stocktake/icon-192.png">
+<link rel="icon" href="https://faoitea.github.io/stocktake/icon-192.png">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
 <title>Stock Take</title>
 <style>
 :root {
@@ -25594,9 +25593,9 @@ CREATE TRIGGER stock_items_updated_at
   </div>
 </div>
 
-<script src="./Stock Take_files/supabase.min.js.download"></script>
-<script src="./Stock Take_files/html5-qrcode.min.js.download"></script>
-<script src="./Stock Take_files/xlsx.full.min.js.download"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode/minified/html5-qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 <script>
 const CFG_KEY = 'stocktake_cfg';
 let sb, currentUser, items = [], tab = 'all', editId = null, parsedRows = [];
@@ -26354,10 +26353,6 @@ function handleImportFile(file) {
     fr.onload = e => parseCSVImport(e.target.result);
     fr.readAsText(file);
   } else {
-    const fr = new FileReader();
-    fr.onload = e => parseXLSX(e.target.result);
-    fr.readAsArrayBuffer(e.target.result);
-    // Fix: use proper ArrayBuffer reading
     const reader = new FileReader();
     reader.onload = ev => parseXLSX(ev.target.result);
     reader.readAsArrayBuffer(file);
