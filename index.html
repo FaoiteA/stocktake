@@ -421,7 +421,7 @@ CREATE TRIGGER stock_items_updated_at
 <div id="app" class="">
   <div class="topbar">
     <div>
-      <div class="topbar-title">📦 Current Stock</div>
+      <div id="topbar-title" class="topbar-title" onclick="toggleViewMode()" style="cursor:default;">📦 Current Stock</div>
       <div class="topbar-user" id="topbar-user">whitecfc@gmail.com</div>
       <div id="active-session-bar" style="font-size: 10px; color: var(--amber); margin-top: 1px; display: block;">📌 <span id="active-session-name">Stock Take Mar 2026</span></div>
     </div>
@@ -26793,7 +26793,9 @@ async function setActiveSession(id, name) {
     await sb.from('app_settings').upsert({ key: 'active_session_id', value: '' });
     await loadItems();
     render(); renderSessionsList();
-    document.getElementById('active-session-bar').style.display = 'none';
+    window.viewMode = 'live';
+    updateTopbarTitle();
+    render(); renderSessionsList();
     toast('Showing live stock data');
   } else {
     activeSessionId = id;
@@ -26802,11 +26804,39 @@ async function setActiveSession(id, name) {
     if (s && s.snapshot && s.snapshot.length) {
       items = s.snapshot.map(p => ({...p, change_log: p.change_log||[], min_qty: p.min_qty||0, counted_qty: p.counted_qty||null, dead_stock: p.dead_stock||false, wrote_off: p.wrote_off||false, paid_claimed: p.paid_claimed||false}));
     }
-    document.getElementById('active-session-bar').style.display = 'block';
-    document.getElementById('active-session-name').textContent = name;
+    window.viewMode = 'session';
+    updateTopbarTitle();
     render(); renderSessionsList();
     closeSessions();
     toast(`📌 Now showing: ${name}`);
+  }
+}
+
+function updateTopbarTitle() {
+  const titleEl = document.getElementById('topbar-title');
+  const bar = document.getElementById('active-session-bar');
+  if (activeSessionId) {
+    const s = sessions.find(x => x.id === activeSessionId);
+    const sName = s ? s.name : 'Stock Take';
+    if (window.viewMode === 'session') {
+      titleEl.textContent = '📋 ' + sName;
+      titleEl.style.color = 'var(--amber)';
+      titleEl.style.cursor = 'pointer';
+      bar.style.display = 'block';
+      bar.textContent = '📌 tap to switch → Current Stock';
+    } else {
+      titleEl.textContent = '📦 Current Stock';
+      titleEl.style.color = '';
+      titleEl.style.cursor = 'pointer';
+      bar.style.display = 'block';
+      bar.textContent = '📌 tap to switch → ' + sName;
+    }
+  } else {
+    titleEl.textContent = '📦 Current Stock';
+    titleEl.style.color = '';
+    titleEl.style.cursor = 'default';
+    bar.style.display = 'none';
+    bar.textContent = '';
   }
 }
 
@@ -26814,15 +26844,30 @@ function updateActiveSessionBar() {
   if (activeSessionId) {
     const s = sessions.find(x => x.id === activeSessionId);
     if (s) {
-      document.getElementById('active-session-bar').style.display = 'block';
-      document.getElementById('active-session-name').textContent = s.name;
-      items = s.snapshot.map(p => ({...p, change_log: p.change_log||[], min_qty: p.min_qty||0, counted_qty: p.counted_qty||null, dead_stock: p.dead_stock||false, wrote_off: p.wrote_off||false, paid_claimed: p.paid_claimed||false}));
+      if (window.viewMode === 'session') {
+        items = s.snapshot.map(p => ({...p, change_log: p.change_log||[], min_qty: p.min_qty||0, counted_qty: p.counted_qty||null, dead_stock: p.dead_stock||false, wrote_off: p.wrote_off||false, paid_claimed: p.paid_claimed||false}));
+      }
     } else {
-      // Session no longer exists
       activeSessionId = null;
       localStorage.removeItem('active_session_id');
     }
   }
+  updateTopbarTitle();
+}
+
+async function toggleViewMode() {
+  if (!activeSessionId) return;
+  const s = sessions.find(x => x.id === activeSessionId);
+  if (!s) return;
+  if (window.viewMode === 'session') {
+    window.viewMode = 'live';
+    await loadItems();
+  } else {
+    window.viewMode = 'session';
+    items = s.snapshot.map(p => ({...p, change_log: p.change_log||[], min_qty: p.min_qty||0, counted_qty: p.counted_qty||null, dead_stock: p.dead_stock||false, wrote_off: p.wrote_off||false, paid_claimed: p.paid_claimed||false}));
+  }
+  updateTopbarTitle();
+  render();
 }
 
 async function loadSessions() {
