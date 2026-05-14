@@ -421,7 +421,7 @@ CREATE TRIGGER stock_items_updated_at
 <div id="app" class="">
   <div class="topbar">
     <div>
-      <div class="topbar-title">📦 Stock Take</div>
+      <div class="topbar-title">📦 Current Stock</div>
       <div class="topbar-user" id="topbar-user">whitecfc@gmail.com</div>
       <div id="active-session-bar" style="font-size: 10px; color: var(--amber); margin-top: 1px; display: block;">📌 <span id="active-session-name">Stock Take Mar 2026</span></div>
     </div>
@@ -430,7 +430,7 @@ CREATE TRIGGER stock_items_updated_at
       <button class="icon-btn" onclick="openBulkLocation()" title="Bulk location update">📍</button>
       <button class="icon-btn" onclick="openBarcodeLabels()" title="Print barcode labels">🏷️</button>
       <button class="icon-btn" onclick="openReport()" title="Report">📊</button>
-      <button class="icon-btn" onclick="openSessions()" title="Stock Take Sessions">📋</button>
+      <button class="icon-btn" onclick="openSessions()" title="Stock Takes">📋</button>
       <button class="icon-btn" onclick="openImport()" title="Import">↑</button>
       <button class="icon-btn" onclick="exportCSV()" title="Export">↓</button>
       <button class="icon-btn" onclick="openCameraScanner()" title="Scan" id="cam-btn">📷</button>
@@ -450,8 +450,8 @@ CREATE TRIGGER stock_items_updated_at
     <div class="vstat"><div class="vstat-lbl">Counted</div><div class="vstat-val amber" id="vs-counted">0%</div></div>
     <div class="vstat"><div class="vstat-lbl">Dead Stock</div><div class="vstat-val red" id="vs-dead">€0</div></div>
     <div class="vstat"><div class="vstat-lbl">Paid/Claimed</div><div class="vstat-val green" id="vs-paid">€0</div></div>
-    <div class="vstat"><div class="vstat-lbl">Wrote Off</div><div class="vstat-val amber" id="vs-wrote">€0</div></div>
-    <div class="vstat"><div class="vstat-lbl">Unpaid Warranty</div><div class="vstat-val amber" id="vs-warranty">€0</div></div>
+    <div class="vstat" onclick="openManualStat('wrote')" style="cursor:pointer" title="Click to edit"><div class="vstat-lbl">Wrote Off ✏️</div><div class="vstat-val amber" id="vs-wrote">€0</div></div>
+    <div class="vstat" onclick="openManualStat('warranty')" style="cursor:pointer" title="Click to edit"><div class="vstat-lbl">Unpaid Warranty ✏️</div><div class="vstat-val amber" id="vs-warranty">€0</div></div>
   </div>
 
   <div class="tabs">
@@ -25458,6 +25458,17 @@ CREATE TRIGGER stock_items_updated_at
 
 <!-- IMPORT SHEET -->
 <div class="sheet-overlay" id="import-overlay" onclick="closeImport()"></div>
+
+<!-- Manual stat input popup -->
+<div id="manual-stat-overlay" onclick="closeManualStat()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:200;"></div>
+<div id="manual-stat-popup" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--surface);border:1px solid var(--border-md);border-radius:14px;padding:20px;z-index:201;min-width:260px;text-align:center;box-shadow:0 8px 24px rgba(0,0,0,0.4);">
+  <div id="manual-stat-title" style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text3);margin-bottom:12px;"></div>
+  <input id="manual-stat-input" type="number" min="0" step="0.01" placeholder="0.00" style="width:100%;padding:10px;font-size:22px;font-weight:700;background:var(--bg);border:1px solid var(--border-md);border-radius:10px;color:var(--text);text-align:center;box-sizing:border-box;outline:none;"/>
+  <div style="display:flex;gap:8px;margin-top:12px;">
+    <button onclick="closeManualStat()" style="flex:1;padding:10px;background:var(--surface2);border:none;border-radius:9px;color:var(--text2);font-weight:600;cursor:pointer;font-family:inherit;">Cancel</button>
+    <button onclick="saveManualStat()" style="flex:1;padding:10px;background:var(--amber);border:none;border-radius:9px;color:#000;font-weight:600;cursor:pointer;font-family:inherit;">Save</button>
+  </div>
+</div>
 <div class="sheet" id="import-sheet">
   <div class="sheet-handle"></div>
   <div class="sheet-title">Import Stock</div>
@@ -25491,11 +25502,11 @@ CREATE TRIGGER stock_items_updated_at
 <div class="sheet-overlay" id="sessions-overlay" onclick="closeSessions()"></div>
 <div class="sheet" id="sessions-sheet">
   <div class="sheet-handle"></div>
-  <div class="sheet-title">Stock Take Sessions</div>
+  <div class="sheet-title">Stock Takes</div>
   <div class="sheet-body" id="sessions-body"></div>
   <div class="sheet-footer">
     <button class="btn btn-secondary" onclick="closeSessions()">Close</button>
-    <button class="btn btn-primary" onclick="openNewSession()">+ New Session</button>
+    <button class="btn btn-primary" onclick="openNewSession()">+ New Stock Take from Current Stock</button>
   </div>
 </div>
 
@@ -25629,6 +25640,7 @@ function showConfig() { hide('login-screen'); show('config-screen'); }
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
 async function init() {
+  loadManualStatValues();
   const cfg = getConfig();
   if (!cfg) { hide('loading-overlay'); show('config-screen'); return; }
   sb = window.supabase.createClient(cfg.url, cfg.key);
@@ -25720,6 +25732,41 @@ function hide(id) { document.getElementById(id).classList.add('hidden'); }
 
 // ── RENDER ────────────────────────────────────────────────────────────────────
 function fmt(n) { return '€' + Number(n||0).toLocaleString('en-IE', {minimumFractionDigits:0, maximumFractionDigits:0}); }
+
+let manualStatKey = '';
+const manualStatValues = { wrote: 0, warranty: 0 };
+
+function openManualStat(key) {
+  manualStatKey = key;
+  const labels = { wrote: 'Wrote Off Value (€)', warranty: 'Unpaid Warranty Value (€)' };
+  document.getElementById('manual-stat-title').textContent = labels[key];
+  document.getElementById('manual-stat-input').value = manualStatValues[key] || '';
+  document.getElementById('manual-stat-overlay').style.display = 'block';
+  document.getElementById('manual-stat-popup').style.display = 'block';
+  setTimeout(() => document.getElementById('manual-stat-input').focus(), 100);
+}
+
+function closeManualStat() {
+  document.getElementById('manual-stat-overlay').style.display = 'none';
+  document.getElementById('manual-stat-popup').style.display = 'none';
+}
+
+function saveManualStat() {
+  const val = parseFloat(document.getElementById('manual-stat-input').value) || 0;
+  manualStatValues[manualStatKey] = val;
+  localStorage.setItem('manualStatValues', JSON.stringify(manualStatValues));
+  render();
+  closeManualStat();
+  toast('Value saved');
+}
+
+function loadManualStatValues() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('manualStatValues') || '{}');
+    if (saved.wrote !== undefined) manualStatValues.wrote = saved.wrote;
+    if (saved.warranty !== undefined) manualStatValues.warranty = saved.warranty;
+  } catch(e) {}
+}
 function itemValue(p) { return (p.qty||0) * (p.cost||0); }
 function hasDisco(p) { return p.counted_qty !== null && p.counted_qty !== p.qty; }
 
@@ -25747,12 +25794,12 @@ function render() {
   const pct = items.length ? Math.round(countedCount / items.length * 100) : 0;
   const deadVal = items.filter(p => p.dead_stock).reduce((s,p) => s + itemValue(p), 0);
   const paidVal = items.filter(p => p.paid_claimed).reduce((s,p) => s + itemValue(p), 0);
-  const wroteVal = items.filter(p => p.wrote_off).reduce((s,p) => s + itemValue(p), 0);
-  const activeSession = activeSessionId ? sessions.find(x => x.id === activeSessionId) : null;
-  const warrantyVal = activeSession ? Number(activeSession.warranty_value || 0) : 0;
+  const wroteVal = manualStatValues.wrote;
+  const warrantyVal = manualStatValues.warranty;
+  const netVal = totalVal - deadVal - paidVal - wroteVal - warrantyVal;
 
   document.getElementById('vs-total').textContent = items.length;
-  document.getElementById('vs-value').textContent = fmt(totalVal);
+  document.getElementById('vs-value').textContent = fmt(netVal);
   document.getElementById('vs-out').textContent = outCount;
   const lowCount = items.filter(p => p.qty > 0 && p.min_qty > 0 && p.qty <= p.min_qty).length;
   document.getElementById('vs-low').textContent = lowCount;
@@ -26543,15 +26590,37 @@ async function doImport() {
 
 // ── EXPORT ────────────────────────────────────────────────────────────────────
 function exportCSV() {
-  const rows = [['Part Number','Description','Area','Location','Qty','Cost','Stock Value','Dead Stock','Paid/Claimed','Wrote Off','Counted Qty','Discrepancy','Notes']];
+  const totalVal = items.reduce((s,p) => s + itemValue(p), 0);
+  const deadVal = items.filter(p => p.dead_stock).reduce((s,p) => s + itemValue(p), 0);
+  const paidVal = items.filter(p => p.paid_claimed).reduce((s,p) => s + itemValue(p), 0);
+  const wroteVal = manualStatValues.wrote;
+  const warrantyVal = manualStatValues.warranty;
+  const netVal = totalVal - deadVal - paidVal - wroteVal - warrantyVal;
+  const date = new Date().toLocaleDateString('en-IE');
+
+  const rows = [
+    ['Stock Take Export', date],
+    [],
+    ['SUMMARY'],
+    ['Net Stock Value', netVal.toFixed(2)],
+    ['Total Stock Value (gross)', totalVal.toFixed(2)],
+    ['Dead Stock', deadVal.toFixed(2)],
+    ['Paid/Claimed', paidVal.toFixed(2)],
+    ['Wrote Off', wroteVal.toFixed(2)],
+    ['Unpaid Warranty', warrantyVal.toFixed(2)],
+    ['Total Parts', items.length],
+    [],
+    ['STOCK LIST'],
+    ['Part Number','Description','Area','Location','Qty','Cost','Stock Value','Dead Stock','Paid/Claimed','Wrote Off','Counted Qty','Discrepancy','Notes']
+  ];
   items.forEach(p => {
     const disco = p.counted_qty !== null ? p.counted_qty - p.qty : '';
     rows.push([p.sku, p.name, p.area, p.location, p.qty, p.cost, itemValue(p), p.dead_stock?'Yes':'', p.paid_claimed?'Yes':'', p.wrote_off?'Yes':'', p.counted_qty!==null?p.counted_qty:'', disco, p.notes]);
   });
-  const csv = rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const csv = rows.map(r=>r.map(c=>`"${String(c||'').replace(/"/g,'""')}"`).join(',')).join('\n');
   const a = document.createElement('a');
   a.href = 'data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
-  a.download = 'stock-take-export.csv';
+  a.download = `stock-export-${date.replace(/\//g,'-')}.csv`;
   a.click();
   toast('CSV exported');
 }
@@ -26589,14 +26658,16 @@ function openReport() {
   const totalVal = items.reduce((s,p)=>s+itemValue(p),0);
   const outItems = items.filter(p=>p.qty===0);
   const deadItems = items.filter(p=>p.dead_stock);
-  const wroteOff = items.filter(p=>p.wrote_off);
+  const paidItems = items.filter(p=>p.paid_claimed);
   const counted = items.filter(p=>p.counted_qty!==null);
   const discos = items.filter(p=>hasDisco(p));
   const deadVal = deadItems.reduce((s,p)=>s+itemValue(p),0);
-  const wroteVal = wroteOff.reduce((s,p)=>s+itemValue(p),0);
+  const paidVal = paidItems.reduce((s,p)=>s+itemValue(p),0);
+  const wroteVal = manualStatValues.wrote;
+  const warrantyVal = manualStatValues.warranty;
+  const netVal = totalVal - deadVal - paidVal - wroteVal - warrantyVal;
   const pct = items.length ? Math.round(counted.length/items.length*100) : 0;
 
-  // By area
   const areaMap = {};
   items.forEach(p => {
     const a = p.area||'Unknown';
@@ -26608,11 +26679,14 @@ function openReport() {
   document.getElementById('report-body').innerHTML = `
     <div class="report-section">
       <div class="report-title">Stock Summary</div>
-      <div class="report-row"><span class="report-key">Total items</span><span class="report-val">${items.length}</span></div>
-      <div class="report-row"><span class="report-key">Total stock value</span><span class="report-val green">${fmt(totalVal)}</span></div>
+      <div class="report-row"><span class="report-key">Total parts</span><span class="report-val">${items.length}</span></div>
+      <div class="report-row"><span class="report-key">Gross stock value</span><span class="report-val">${fmt(totalVal)}</span></div>
+      <div class="report-row"><span class="report-key">Dead stock</span><span class="report-val red">− ${fmt(deadVal)} (${deadItems.length} items)</span></div>
+      <div class="report-row"><span class="report-key">Paid/Claimed</span><span class="report-val red">− ${fmt(paidVal)} (${paidItems.length} items)</span></div>
+      <div class="report-row"><span class="report-key">Wrote off</span><span class="report-val red">− ${fmt(wroteVal)}</span></div>
+      <div class="report-row"><span class="report-key">Unpaid warranty</span><span class="report-val red">− ${fmt(warrantyVal)}</span></div>
+      <div class="report-row"><span class="report-key" style="font-weight:700;color:var(--text);">Net stock value</span><span class="report-val green" style="font-size:16px;">${fmt(netVal)}</span></div>
       <div class="report-row"><span class="report-key">Out of stock</span><span class="report-val red">${outItems.length} items</span></div>
-      <div class="report-row"><span class="report-key">Dead stock value</span><span class="report-val amber">${fmt(deadVal)} (${deadItems.length} items)</span></div>
-      <div class="report-row"><span class="report-key">Wrote off value</span><span class="report-val red">${fmt(wroteVal)} (${wroteOff.length} items)</span></div>
     </div>
     <div class="report-section">
       <div class="report-title">Stock Take Progress</div>
@@ -26626,7 +26700,7 @@ function openReport() {
         <div class="report-row"><span class="report-key">${esc(a)}</span><span class="report-val">${fmt(v.value)} (${v.count})</span></div>
       `).join('')}
     </div>
-    <button class="btn btn-secondary btn-full" style="margin-top:8px;" onclick="exportCSV();closeReport()">Export full report as CSV</button>
+    <button class="btn btn-secondary btn-full" style="margin-top:8px;" onclick="exportCSV();closeReport()">Export as CSV</button>
   `;
   openSheet('report');
 }
@@ -26695,7 +26769,8 @@ async function pushToLive(id, name) {
         area: p.area||'',
         name: p.name||'',
         dead_stock: p.dead_stock||false,
-        wrote_off: p.wrote_off||false
+        wrote_off: p.wrote_off||false,
+        paid_claimed: p.paid_claimed||false
       }).eq('id', p.id)
     ));
   }
@@ -26808,7 +26883,7 @@ function renderSessionsList() {
         <button class="btn btn-secondary" style="flex:1;padding:8px;font-size:12px;" onclick="openSessionDetail('${s.id}')">View</button>
         ${sessions.length > 1 ? `<button class="btn btn-secondary" style="flex:1;padding:8px;font-size:12px;" onclick="startCompare('${s.id}')">Compare</button>` : ''}
         <button class="btn" style="flex:1;padding:8px;font-size:12px;background:${activeSessionId===s.id?'var(--amber-bg)':'var(--surface2)'};color:${activeSessionId===s.id?'var(--amber)':'var(--text2)'};" onclick="setActiveSession('${s.id}','${esc(s.name)}')">${activeSessionId===s.id?'📌 Active':'Set Active'}</button>
-        <button class="btn btn-success" style="flex:1;padding:8px;font-size:12px;" onclick="pushToLive('${s.id}','${esc(s.name)}')">↑ Push to Live</button>
+        <button class="btn btn-success" style="flex:1;padding:8px;font-size:12px;" onclick="pushToLive('${s.id}','${esc(s.name)}')">↑ Push to Current Stock</button>
         <button class="btn btn-danger" style="padding:8px 12px;font-size:12px;" onclick="deleteSession('${s.id}')">🗑️</button>
       </div>
     </div>`;
