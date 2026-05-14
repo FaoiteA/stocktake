@@ -421,9 +421,9 @@ CREATE TRIGGER stock_items_updated_at
 <div id="app" class="">
   <div class="topbar">
     <div>
-      <div id="topbar-title" class="topbar-title" onclick="toggleViewMode()" style="cursor:default;">📦 Current Stock</div>
-      <div class="topbar-user" id="topbar-user">whitecfc@gmail.com</div>
-      <div id="active-session-bar" style="font-size: 10px; color: var(--amber); margin-top: 1px; display: block;">📌 <span id="active-session-name">Stock Take Mar 2026</span></div>
+      <<div id="topbar-title" class="topbar-title">📦 Current Stock</div>
+<div class="topbar-user" id="topbar-user">whitecfc@gmail.com</div>
+<div id="active-session-bar" style="font-size: 10px; color: var(--amber); margin-top: 1px; display: none;"><button onclick="toggleViewMode()" style="background:var(--amber-bg);color:var(--amber);border:1px solid rgba(245,158,11,0.3);border-radius:6px;padding:2px 8px;font-size:10px;font-family:inherit;cursor:pointer;" id="toggle-view-btn">📌 Switch View</button></div>Ss
     </div>
     <div class="topbar-actions">
       <button class="icon-btn" onclick="refreshData()" title="Refresh" id="refresh-btn">↻</button>
