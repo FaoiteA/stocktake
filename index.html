@@ -423,8 +423,7 @@ CREATE TRIGGER stock_items_updated_at
     <div>
       <<div id="topbar-title" class="topbar-title">📦 Current Stock</div>
 <div class="topbar-user" id="topbar-user">whitecfc@gmail.com</div>
-<div id="active-session-bar" style="font-size: 10px; color: var(--amber); margin-top: 1px; display: none;"><button onclick="toggleViewMode()" style="background:var(--amber-bg);color:var(--amber);border:1px solid rgba(245,158,11,0.3);border-radius:6px;padding:2px 8px;font-size:10px;font-family:inherit;cursor:pointer;" id="toggle-view-btn">📌 Switch View</button></div>Ss
-    </div>
+<div id="active-session-bar" onclick="toggleViewMode()" style="font-size: 10px; color: var(--amber); margin-top: 1px; display: none; cursor:pointer;">📌 tap to switch → Current Stock</div>    </div>
     <div class="topbar-actions">
       <button class="icon-btn" onclick="refreshData()" title="Refresh" id="refresh-btn">↻</button>
       <button class="icon-btn" onclick="openBulkLocation()" title="Bulk location update">📍</button>
