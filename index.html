@@ -27611,8 +27611,15 @@ function printLabels() {
   win.document.close();
 }
 
-function openSheet(n) { document.getElementById(n+'-overlay').classList.add('open'); document.getElementById(n+'-sheet').classList.add('open'); }
-function closeSheet(n) { document.getElementById(n+'-overlay').classList.remove('open'); document.getElementById(n+'-sheet').classList.remove('open'); }
+let longPressTimer = null;
+function startLongPress(e, id) {
+  longPressTimer = setTimeout(() => { longPressTimer = null; openCtxMenu(e, id); }, 600);
+}
+function cancelLongPress() {
+  if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+}
+
+function openSheet(n) { document.getElementById(n+'-overlay').classList.add('open'); document.getElementById(n+'-sheet').classList.add('open'); }function closeSheet(n) { document.getElementById(n+'-overlay').classList.remove('open'); document.getElementById(n+'-sheet').classList.remove('open'); }
 
 let toastTimer;
 function toast(msg) {
