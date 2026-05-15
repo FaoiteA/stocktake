@@ -26981,8 +26981,8 @@ async function saveSession() {
   const wroteValManual = parseFloat(document.getElementById('ns-wroteval')?.value) || 0;
   const wroteVal = wroteValManual || wroteValCalc;
   const outCount = items.filter(p=>p.qty===0).length;
-  // Save snapshot of current stock
-  const snapshot = items.map(p => ({ id:p.id, sku:p.sku, name:p.name, qty:p.qty, cost:p.cost, location:p.location, area:p.area, dead_stock:p.dead_stock, wrote_off:p.wrote_off, paid_claimed:p.paid_claimed }));
+  // Save snapshot of current stock with quantities reset to zero for counting
+  const snapshot = items.map(p => ({ id:p.id, sku:p.sku, name:p.name, qty:0, cost:p.cost, location:p.location, area:p.area, dead_stock:p.dead_stock, wrote_off:p.wrote_off, paid_claimed:p.paid_claimed, counted_qty:null, min_qty:p.min_qty||0, change_log:[] }));
   const sessionData = {
     name,
     notes: document.getElementById('ns-notes').value.trim(),
@@ -26999,8 +26999,20 @@ async function saveSession() {
   const { error } = await sb.from('stock_sessions').insert(sessionData);
   hideSync();
   if (error) { toast('Error saving: ' + error.message); return; }
+// Auto-activate the new session for counting
+  await loadSessions();
+  const newSession = sessions[0];
+  if (newSession) {
+    activeSessionId = newSession.id;
+    window.viewMode = 'session';
+    await sb.from('app_settings').upsert({ key: 'active_session_id', value: newSession.id });
+    items = newSession.snapshot.map(p => ({...p}));
+    updateTopbarTitle();
+    render();
+  }
   closeNewSession();
-  toast('Session saved ✓');
+  closeSessions();
+  toast('Stock take created — quantities reset to zero, ready to count ✓');
 }
 
 let currentSessionId = null;
