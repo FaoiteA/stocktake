@@ -25690,10 +25690,11 @@ async function showApp() {
   await loadItems();
   // Restore active session from Supabase
   const { data: setting } = await sb.from('app_settings').select('value').eq('key', 'active_session_id').single();
+  await loadSessions();
+  await loadSessions();
   if (setting && setting.value) {
     activeSessionId = setting.value;
     window.viewMode = 'session';
-    await loadSessions();
     updateActiveSessionBar();
   }
   hide('loading-overlay');
