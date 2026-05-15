@@ -27117,8 +27117,20 @@ async function saveSession() {
   const { error } = await sb.from('stock_sessions').insert(sessionData);
   hideSync();
   if (error) { toast('Error saving: ' + error.message); return; }
+  // Auto-activate the new session for counting
+  await loadSessions();
+  const newSession = sessions[0]; // most recent
+  if (newSession) {
+    activeSessionId = newSession.id;
+    window.viewMode = 'session';
+    await sb.from('app_settings').upsert({ key: 'active_session_id', value: newSession.id });
+    items = newSession.snapshot.map(p => ({...p}));
+    updateTopbarTitle();
+    render();
+  }
   closeNewSession();
-  toast('Session saved ✓');
+  closeSessions();
+  toast('Stock take created — quantities reset to zero, ready to count ✓');
 }
 
 let currentSessionId = null;
@@ -27611,15 +27623,7 @@ function printLabels() {
   win.document.close();
 }
 
-let longPressTimer = null;
-function startLongPress(e, id) {
-  longPressTimer = setTimeout(() => { longPressTimer = null; openCtxMenu(e, id); }, 600);
-}
-function cancelLongPress() {
-  if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
-}
-
-function openSheet(n) { document.getElementById(n+'-overlay').classList.add('open'); document.getElementById(n+'-sheet').classList.add('open'); }function closeSheet(n) { document.getElementById(n+'-overlay').classList.remove('open'); document.getElementById(n+'-sheet').classList.remove('open'); }
+function openSheet(n) {
 
 let toastTimer;
 function toast(msg) {
