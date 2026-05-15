@@ -26629,30 +26629,42 @@ function exportCSV() {
 // ── REPORT ────────────────────────────────────────────────────────────────────
 async function resetAllQty() {
   if (!confirm('Reset ALL quantities to zero?')) return;
-  // Capture previous quantities BEFORE resetting
   const prevQtys = items.map(p => ({ id: p.id, qty: p.qty }));
-  showSync();
-  const { error } = await sb.from('stock_items').update({ qty: 0 }).neq('id', '00000000-0000-0000-0000-000000000000');
-  hideSync();
-  if (error) { toast('Error: ' + error.message); return; }
-  items.forEach(p => p.qty = 0);
-  render();
-  showUndo('All quantities reset to zero', async () => {
+  if (window.viewMode === 'session' && activeSessionId) {
+    // Only reset the session snapshot — do NOT touch live stock_items
+    items.forEach(p => p.qty = 0);
+    const s = sessions.find(x => x.id === activeSessionId);
+    if (s) s.snapshot = items.map(p => ({...p}));
+    render();
+    showUndo('Stock take quantities reset to zero', async () => {
+      items.forEach(p => { const prev = prevQtys.find(x => x.id === p.id); if (prev) p.qty = prev.qty; });
+      if (s) s.snapshot = items.map(p => ({...p}));
+      render(); toast('Undo — quantities restored');
+    });
+  } else {
+    // Live mode — update Supabase
     showSync();
-    // Update in batches of 100 for speed
-    const nonZero = prevQtys.filter(p => p.qty > 0);
-    for (let i = 0; i < nonZero.length; i += 100) {
-      const batch = nonZero.slice(i, i + 100);
-      await Promise.all(batch.map(prev =>
-        sb.from('stock_items').update({ qty: prev.qty }).eq('id', prev.id)
-      ));
-      batch.forEach(prev => {
-        const p = items.find(x => x.id === prev.id);
-        if (p) p.qty = prev.qty;
-      });
-    }
-    hideSync(); render(); toast('Undo — all quantities restored');
-  });
+    const { error } = await sb.from('stock_items').update({ qty: 0 }).neq('id', '00000000-0000-0000-0000-000000000000');
+    hideSync();
+    if (error) { toast('Error: ' + error.message); return; }
+    items.forEach(p => p.qty = 0);
+    render();
+    showUndo('All quantities reset to zero', async () => {
+      showSync();
+      const nonZero = prevQtys.filter(p => p.qty > 0);
+      for (let i = 0; i < nonZero.length; i += 100) {
+        const batch = nonZero.slice(i, i + 100);
+        await Promise.all(batch.map(prev =>
+          sb.from('stock_items').update({ qty: prev.qty }).eq('id', prev.id)
+        ));
+        batch.forEach(prev => {
+          const p = items.find(x => x.id === prev.id);
+          if (p) p.qty = prev.qty;
+        });
+      }
+      hideSync(); render(); toast('Undo — all quantities restored');
+    });
+  }
 }
 
 function openReport() {
