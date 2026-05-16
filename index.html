@@ -26156,6 +26156,7 @@ async function adjQty(id, delta, reason) {
   const prevQty = p.qty;
   const newQty = Math.max(0, p.qty + delta);
   p.qty = newQty;
+  pushUndoStack({ type:'qty', id:id, prevQty:prevQty, newQty:newQty, label:p.name+' '+prevQty+'\u2192'+newQty });
   render();
   const el = document.getElementById('dqty-'+id);
   if (el) { el.textContent = newQty; renderDetailBody(p); }
