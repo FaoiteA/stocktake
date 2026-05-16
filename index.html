@@ -26713,11 +26713,38 @@ function openReport() {
         <div class="report-row"><span class="report-key">${esc(a)}</span><span class="report-val">${fmt(v.value)} (${v.count})</span></div>
       `).join('')}
     </div>
-    <button class="btn btn-secondary btn-full" style="margin-top:8px;" onclick="exportCSV();closeReport()">Export as CSV</button>
-  `;
+<button class="btn btn-secondary btn-full" style="margin-top:8px;" onclick="exportCSV();closeReport()">Export as CSV</button>
+    <button class="btn btn-secondary btn-full" style="margin-top:8px;" onclick="printReport()">🖨️ Print / Save as PDF</button>  `;
   openSheet('report');
 }
 function closeReport() { closeSheet('report'); }
+
+function printReport() {
+  const body = document.getElementById('report-body').innerHTML;
+  const title = window.viewMode === 'session' && activeSessionId
+    ? (sessions.find(x=>x.id===activeSessionId)||{}).name || 'Stock Report'
+    : 'Current Stock Report';
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html><html><head><title>${title}</title>
+    <style>
+      body { font-family: Arial, sans-serif; padding: 20px; color: #111; }
+      h1 { font-size: 18px; margin-bottom: 16px; }
+      .report-section { margin-bottom: 20px; border: 1px solid #ddd; border-radius: 6px; padding: 12px; }
+      .report-title { font-weight: bold; font-size: 14px; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 6px; }
+      .report-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }
+      .report-key { color: #555; }
+      .report-val { font-weight: 600; }
+      .red { color: #e53e3e; } .green { color: #38a169; } .amber { color: #d97706; }
+      button { display: none; }
+      @media print { body { padding: 10px; } }
+    </style></head><body>
+    <h1>${title}</h1>
+    <p style="font-size:12px;color:#888;">Generated: ${new Date().toLocaleString('en-IE')}</p>
+    ${body}
+    </body></html>`);
+  win.document.close();
+  win.print();
+}
 
 // ── SHEET HELPERS ─────────────────────────────────────────────────────────────
 // Context menu
