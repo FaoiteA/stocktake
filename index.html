@@ -26087,10 +26087,17 @@ async function inlineAdj(id, delta) {
   if (el) el.textContent = newQty;
   // Update badge inline
   render();
-  if (!activeSessionId) {
-    // Only sync to Supabase if showing live data
+  if (window.viewMode === 'session' && activeSessionId) {
+    const s = sessions.find(x => x.id === activeSessionId);
+    if (s) {
+      s.snapshot = items.map(p => ({...p}));
+      showSync();
+      await sb.from('stock_sessions').update({ snapshot: s.snapshot }).eq('id', activeSessionId);
+      hideSync();
+    }
+  } else {
     showSync();
-    const logEntry = { ts: new Date().toISOString(), user: currentUser.email, from: p.qty - delta, to: newQty, reason: '' };
+    const logEntry = { ts: new Date().toISOString(), user: currentUser.email, from: prevQty, to: newQty, reason: '' };
     const log = [...(p.change_log||[]), logEntry].slice(-50);
     p.change_log = log;
     await sb.from('stock_items').update({ qty: newQty, change_log: log }).eq('id', id);
