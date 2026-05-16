@@ -25640,6 +25640,137 @@ function saveConfig() {
 function showConfig() { hide('login-screen'); show('config-screen'); }
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
+
+// ── UNDO / REDO HISTORY ───────────────────────────────────────────────────────
+const UNDO_MAX = 10;
+let undoStack = [];
+let redoStack = [];
+
+function loadUndoStacks() {
+  try {
+    undoStack = JSON.parse(localStorage.getItem('undoStack') || '[]');
+    redoStack = JSON.parse(localStorage.getItem('redoStack') || '[]');
+  } catch(e) { undoStack = []; redoStack = []; }
+  updateUndoRedoBtns();
+}
+
+function saveUndoStacks() {
+  localStorage.setItem('undoStack', JSON.stringify(undoStack));
+  localStorage.setItem('redoStack', JSON.stringify(redoStack));
+}
+
+function clearUndoHistory() {
+  undoStack = []; redoStack = [];
+  saveUndoStacks();
+  updateUndoRedoBtns();
+}
+
+function pushUndoStack(action) {
+  undoStack.push(action);
+  if (undoStack.length > UNDO_MAX) undoStack.shift();
+  redoStack = [];
+  saveUndoStacks();
+  updateUndoRedoBtns();
+}
+
+function updateUndoRedoBtns() {
+  const ub = document.getElementById('undo-hist-btn');
+  const rb = document.getElementById('redo-hist-btn');
+  const uc = document.getElementById('undo-hist-count');
+  const rc = document.getElementById('redo-hist-count');
+  if (!ub) return;
+  if (undoStack.length > 0) {
+    ub.style.opacity = '1'; ub.style.cursor = 'pointer';
+    if (uc) uc.textContent = undoStack.length > 1 ? ' '+undoStack.length : '';
+  } else {
+    ub.style.opacity = '0.3'; ub.style.cursor = 'not-allowed';
+    if (uc) uc.textContent = '';
+  }
+  if (redoStack.length > 0) {
+    rb.style.opacity = '1'; rb.style.cursor = 'pointer';
+    if (rc) rc.textContent = redoStack.length > 1 ? ' '+redoStack.length : '';
+  } else {
+    rb.style.opacity = '0.3'; rb.style.cursor = 'not-allowed';
+    if (rc) rc.textContent = '';
+  }
+}
+
+async function applyAction(action, reverse) {
+  if (action.type === 'qty') {
+    const qty = reverse ? action.prevQty : action.newQty;
+    const p = items.find(x => x.id === action.id);
+    if (!p) return;
+    p.qty = qty;
+    if (window.viewMode === 'session' && activeSessionId) {
+      const s = sessions.find(x => x.id === activeSessionId);
+      if (s) {
+        s.snapshot = items.map(p => ({...p}));
+        showSync();
+        await sb.from('stock_sessions').update({ snapshot: s.snapshot }).eq('id', activeSessionId);
+        hideSync();
+      }
+    } else {
+      showSync();
+      await sb.from('stock_items').update({ qty }).eq('id', action.id);
+      hideSync();
+    }
+    render();
+  } else if (action.type === 'flag') {
+    const value = reverse ? action.prevValue : action.newValue;
+    const p = items.find(x => x.id === action.id);
+    if (!p) return;
+    p[action.field] = value;
+    showSync();
+    await sb.from('stock_items').update({ [action.field]: value }).eq('id', action.id);
+    hideSync();
+    render();
+  } else if (action.type === 'edit') {
+    const data = reverse ? action.prevItem : action.newData;
+    showSync();
+    await sb.from('stock_items').update(data).eq('id', action.id);
+    hideSync();
+    const i = items.findIndex(x => x.id === action.id);
+    if (i !== -1) items[i] = {...items[i], ...data};
+    render();
+  } else if (action.type === 'reset') {
+    const qtys = reverse ? action.prevQtys : action.newQtys;
+    if (window.viewMode !== 'session') {
+      showSync();
+      for (let i = 0; i < qtys.length; i += 100) {
+        const batch = qtys.slice(i, i+100);
+        await Promise.all(batch.map(x => sb.from('stock_items').update({ qty: x.qty }).eq('id', x.id)));
+      }
+      hideSync();
+    }
+    qtys.forEach(x => { const p = items.find(q => q.id === x.id); if (p) p.qty = x.qty; });
+    if (window.viewMode === 'session' && activeSessionId) {
+      const s = sessions.find(x => x.id === activeSessionId);
+      if (s) s.snapshot = items.map(p => ({...p}));
+    }
+    render();
+  }
+}
+
+async function doUndoHistory() {
+  if (!undoStack.length) return;
+  const action = undoStack.pop();
+  redoStack.push(action);
+  saveUndoStacks();
+  updateUndoRedoBtns();
+  await applyAction(action, true);
+  toast('↩ ' + action.label);
+}
+
+async function doRedoHistory() {
+  if (!redoStack.length) return;
+  const action = redoStack.pop();
+  undoStack.push(action);
+  saveUndoStacks();
+  updateUndoRedoBtns();
+  await applyAction(action, false);
+  toast('↪ ' + action.label);
+}
+
 async function init() {
   loadManualStatValues();
   const cfg = getConfig();
