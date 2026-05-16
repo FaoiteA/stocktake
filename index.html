@@ -26765,9 +26765,12 @@ let sessions = [], compareSessions = [];
 let activeSessionId = null;
 
 async function pushToLive(id, name) {
-  if (!confirm(`Push all quantities from "${name}" to live stock? This will overwrite your current live quantities.`)) return;
   const s = sessions.find(x => x.id === id);
   if (!s || !s.snapshot || !s.snapshot.length) { toast('No parts in this session'); return; }
+  const partCount = s.snapshot.length;
+  const totalVal = s.snapshot.reduce((sum, p) => sum + ((p.qty||0) * (p.cost||0)), 0);
+  const counted = s.snapshot.filter(p => (p.qty||0) > 0).length;
+  if (!confirm(`Push "${name}" to Current Stock?\n\n📦 Parts: ${partCount}\n✅ Counted: ${counted}\n💶 Value: €${totalVal.toFixed(2)}\n\n⚠️ This will overwrite your live quantities.`)) return;
   showSync();
   document.getElementById('loading-txt').textContent = 'Pushing to live stock…';
   show('loading-overlay');
