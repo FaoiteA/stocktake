@@ -426,6 +426,8 @@ CREATE TRIGGER stock_items_updated_at
 <div id="active-session-bar" onclick="toggleViewMode()" style="font-size: 10px; color: var(--amber); margin-top: 1px; display: none; cursor:pointer;">📌 tap to switch → Current Stock</div>    </div>
     <div class="topbar-actions">
       <button class="icon-btn" onclick="refreshData()" title="Refresh" id="refresh-btn">↻</button>
+      <button class="icon-btn" id="undo-hist-btn" onclick="doUndoHistory()" title="Undo" style="opacity:0.3;cursor:not-allowed;">↩<span id="undo-hist-count" style="font-size:9px;margin-left:1px;"></span></button>
+      <button class="icon-btn" id="redo-hist-btn" onclick="doRedoHistory()" title="Redo" style="opacity:0.3;cursor:not-allowed;">↪<span id="redo-hist-count" style="font-size:9px;margin-left:1px;"></span></button>
       <button class="icon-btn" onclick="openBulkLocation()" title="Bulk location update">📍</button>
       <button class="icon-btn" onclick="openBarcodeLabels()" title="Print barcode labels">🏷️</button>
       <button class="icon-btn" onclick="openReport()" title="Report">📊</button>
