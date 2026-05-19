@@ -26218,6 +26218,7 @@ async function inlineAdj(id, delta) {
   const prevQty = p.qty;
   const newQty = Math.max(0, p.qty + delta);
   p.qty = newQty;
+  pushUndoStack({ type:'qty', id:id, prevQty:prevQty, newQty:newQty, label:p.name+' '+prevQty+'\u2192'+newQty });
   const el = document.getElementById('iqty-' + id);
   if (el) el.textContent = newQty;
   // Update badge inline
