@@ -405,6 +405,7 @@ CREATE TRIGGER stock_items_updated_at
     </div>
     <button class="btn btn-primary" id="login-btn" onclick="doLogin()" disabled=""><span class="spinner-sm"></span>Signing in…</button>
     <div class="login-err" id="login-err"></div>
+    <div style="text-align:center;margin-top:12px;"><a onclick="doForgotPassword()" style="font-size:13px;color:var(--accent);cursor:pointer;">Forgot password?</a></div>
   </div>
   <div class="login-hint">
     <a onclick="showConfig()">Settings</a>
@@ -25782,6 +25783,20 @@ async function init() {
   else show('login-screen');
 }
 
+// ── PASSWORD RECOVERY HANDLER ─────────────────────────────────────────────────
+(async function handleRecovery() {
+  const hash = window.location.hash;
+  if (hash && hash.includes('type=recovery')) {
+    const newPw = prompt('Enter your new password (min 6 characters):');
+    if (newPw && newPw.length >= 6) {
+      const { error } = await sb.auth.updateUser({ password: newPw });
+      if (error) alert('Error: ' + error.message);
+      else alert('Password updated! You can now sign in.');
+    }
+    window.location.hash = '';
+  }
+})();
+
 // ── AUTH ──────────────────────────────────────────────────────────────────────
 async function doLogin() {
   const email = document.getElementById('login-email').value.trim();
@@ -25796,6 +25811,18 @@ async function doLogin() {
   currentUser = data.user;
   hide('login-screen');
   await showApp();
+}
+async function doForgotPassword() {
+  const email = document.getElementById('login-email').value.trim();
+  if (!email) { document.getElementById('login-err').textContent = 'Enter your email above first.'; return; }
+  const err = document.getElementById('login-err');
+  err.textContent = 'Sending reset link...';
+  err.style.color = 'var(--accent)';
+  const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + window.location.pathname });
+  if (error) { err.textContent = error.message; err.style.color = 'var(--red)'; return; }
+  err.textContent = 'Reset link sent! Check your email.';
+  err.style.color = 'var(--green, #22c55e)';
+  setTimeout(() => { err.textContent = ''; err.style.color = 'var(--red)'; }, 5000);
 }
 async function showSignup() {
   const email = prompt('Email for new account:');
