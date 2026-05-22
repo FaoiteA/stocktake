@@ -25893,6 +25893,7 @@ function subscribeRealtime() {
   if (realtimeChannel) { sb.removeChannel(realtimeChannel); }
   realtimeChannel = sb.channel('stock-changes')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_items' }, (payload) => {
+      console.log("RT event:", payload.eventType, payload.new?.id);
       if (payload.eventType === 'UPDATE') {
         const idx = items.findIndex(x => x.id === payload.new.id);
         if (idx !== -1) { items[idx] = payload.new; render(); }
