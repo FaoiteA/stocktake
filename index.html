@@ -25888,8 +25888,10 @@ async function loadItems() {
 
 }
 let realtimeChannel = null;
-function subscribeRealtime() {
+async function subscribeRealtime() {
   console.log("RT: subscribing...");
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) sb.realtime.setAuth(session.access_token);
   if (realtimeChannel) { sb.removeChannel(realtimeChannel); }
   realtimeChannel = sb.channel('stock-changes')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_items' }, (payload) => {
