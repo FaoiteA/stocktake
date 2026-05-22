@@ -25859,6 +25859,7 @@ async function showApp() {
   hide('loading-overlay');
   initUsbScanner();
   render();
+  subscribeRealtime();
 }
 async function refreshData() {
   const btn = document.getElementById('refresh-btn');
