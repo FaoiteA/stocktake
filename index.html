@@ -25886,6 +25886,26 @@ async function loadItems() {
   return;
 
 }
+let realtimeChannel = null;
+function subscribeRealtime() {
+  if (realtimeChannel) { sb.removeChannel(realtimeChannel); }
+  realtimeChannel = sb.channel('stock-changes')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_items' }, (payload) => {
+      if (payload.eventType === 'UPDATE') {
+        const idx = items.findIndex(x => x.id === payload.new.id);
+        if (idx !== -1) { items[idx] = payload.new; render(); }
+      } else if (payload.eventType === 'INSERT') {
+        items.push(payload.new);
+        items.sort((a, b) => (a.name||'').localeCompare(b.name||''));
+        render();
+      } else if (payload.eventType === 'DELETE') {
+        items = items.filter(x => x.id !== payload.old.id);
+        render();
+      }
+    })
+    .subscribe();
+}
+
 function showSync() { document.getElementById('sync-bar').classList.add('show'); }
 function hideSync() { document.getElementById('sync-bar').classList.remove('show'); }
 function show(id) { document.getElementById(id).classList.remove('hidden'); }
