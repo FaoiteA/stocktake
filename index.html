@@ -25863,10 +25863,14 @@ async function showApp() {
 }
 
 let pollInterval = null;
+let saveInProgress = false;
+let lastSaveTime = 0;
 async function startPolling() {
   if (pollInterval) clearInterval(pollInterval);
   pollInterval = setInterval(async () => {
     if (document.hidden) return;
+    if (saveInProgress) return;
+    if (Date.now() - lastSaveTime < 3000) return;
     const { data, error } = await sb.from("stock_items").select("*").order("name");
     if (error || !data) return;
     const changed = JSON.stringify(data) !== JSON.stringify(items);
@@ -25923,8 +25927,8 @@ async function subscribeRealtime() {
     .subscribe((status) => { console.log("RT status:", status); });
 }
 
-function showSync() { document.getElementById('sync-bar').classList.add('show'); }
-function hideSync() { document.getElementById('sync-bar').classList.remove('show'); }
+function showSync() { saveInProgress = true; document.getElementById('sync-bar').classList.add('show'); }
+function hideSync() { saveInProgress = false; lastSaveTime = Date.now(); document.getElementById('sync-bar').classList.remove('show'); }
 function show(id) { document.getElementById(id).classList.remove('hidden'); }
 function hide(id) { document.getElementById(id).classList.add('hidden'); }
 
