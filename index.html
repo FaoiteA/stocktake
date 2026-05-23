@@ -25847,6 +25847,7 @@ async function showApp() {
   document.getElementById('loading-txt').textContent = 'Loading stock…';
   show('loading-overlay');
   await loadItems();
+  await loadManualStatValuesFromSupabase();
   // Restore active session from Supabase
   const { data: setting } = await sb.from('app_settings').select('value').eq('key', 'active_session_id').single();
   await loadSessions();
@@ -25871,7 +25872,8 @@ async function startPolling() {
     if (document.hidden) return;
     if (saveInProgress) return;
     if (Date.now() - lastSaveTime < 3000) return;
-    // Fetch ALL rows using same pagination as loadItems
+    let didRender = false;
+    // 1. Fetch stock_items (paginated)
     let allItems = [];
     let from = 0;
     const pageSize = 500;
@@ -25883,9 +25885,33 @@ async function startPolling() {
       if (data.length < pageSize) break;
       from += pageSize;
     }
-    if (allItems.length === 0) return;
-    const changed = JSON.stringify(allItems) !== JSON.stringify(items);
-    if (changed) { items = allItems; render(); }
+    if (allItems.length > 0 && JSON.stringify(allItems) !== JSON.stringify(items)) {
+      items = allItems;
+      didRender = true;
+    }
+    // 2. Fetch sessions (in case snapshot changed elsewhere)
+    const { data: sessData } = await sb.from("stock_sessions").select("*").order("created_at", { ascending: false });
+    if (sessData && JSON.stringify(sessData) !== JSON.stringify(sessions)) {
+      sessions = sessData;
+      // If we are viewing the active session, swap items to its updated snapshot
+      if (window.viewMode === 'session' && activeSessionId) {
+        const s = sessions.find(x => x.id === activeSessionId);
+        if (s && s.snapshot) {
+          items = s.snapshot;
+        }
+      }
+      didRender = true;
+    }
+    // 3. Fetch manual stat values
+    const { data: stats } = await sb.from("app_settings").select("key, value").in("key", ["manual_stat_wrote", "manual_stat_warranty"]);
+    if (stats) {
+      stats.forEach(row => {
+        const v = parseFloat(row.value) || 0;
+        if (row.key === "manual_stat_wrote" && manualStatValues.wrote !== v) { manualStatValues.wrote = v; didRender = true; }
+        if (row.key === "manual_stat_warranty" && manualStatValues.warranty !== v) { manualStatValues.warranty = v; didRender = true; }
+      });
+    }
+    if (didRender) render();
   }, 5000);
 }
 async function refreshData() {
@@ -25964,12 +25990,15 @@ function closeManualStat() {
   document.getElementById('manual-stat-popup').style.display = 'none';
 }
 
-function saveManualStat() {
+async function saveManualStat() {
   const val = parseFloat(document.getElementById('manual-stat-input').value) || 0;
   manualStatValues[manualStatKey] = val;
   localStorage.setItem('manualStatValues', JSON.stringify(manualStatValues));
   render();
   closeManualStat();
+  showSync();
+  await sb.from('app_settings').upsert({ key: 'manual_stat_' + manualStatKey, value: String(val) });
+  hideSync();
   toast('Value saved');
 }
 
@@ -25979,6 +26008,18 @@ function loadManualStatValues() {
     if (saved.wrote !== undefined) manualStatValues.wrote = saved.wrote;
     if (saved.warranty !== undefined) manualStatValues.warranty = saved.warranty;
   } catch(e) {}
+}
+async function loadManualStatValuesFromSupabase() {
+  try {
+    const { data } = await sb.from('app_settings').select('key, value').in('key', ['manual_stat_wrote', 'manual_stat_warranty']);
+    if (data) {
+      data.forEach(row => {
+        if (row.key === 'manual_stat_wrote') manualStatValues.wrote = parseFloat(row.value) || 0;
+        if (row.key === 'manual_stat_warranty') manualStatValues.warranty = parseFloat(row.value) || 0;
+      });
+      localStorage.setItem('manualStatValues', JSON.stringify(manualStatValues));
+    }
+  } catch(e) { console.error('loadManualStatValuesFromSupabase:', e); }
 }
 function itemValue(p) { return (p.qty||0) * (p.cost||0); }
 function hasDisco(p) { return p.counted_qty !== null && p.counted_qty !== p.qty; }
