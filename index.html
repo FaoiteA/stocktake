@@ -25871,10 +25871,21 @@ async function startPolling() {
     if (document.hidden) return;
     if (saveInProgress) return;
     if (Date.now() - lastSaveTime < 3000) return;
-    const { data, error } = await sb.from("stock_items").select("*").order("name");
-    if (error || !data) return;
-    const changed = JSON.stringify(data) !== JSON.stringify(items);
-    if (changed) { items = data; render(); }
+    // Fetch ALL rows using same pagination as loadItems
+    let allItems = [];
+    let from = 0;
+    const pageSize = 500;
+    while (true) {
+      const { data, error } = await sb.from("stock_items").select("*").order("name").range(from, from + pageSize - 1);
+      if (error) return;
+      if (!data || data.length === 0) break;
+      allItems = allItems.concat(data);
+      if (data.length < pageSize) break;
+      from += pageSize;
+    }
+    if (allItems.length === 0) return;
+    const changed = JSON.stringify(allItems) !== JSON.stringify(items);
+    if (changed) { items = allItems; render(); }
   }, 5000);
 }
 async function refreshData() {
