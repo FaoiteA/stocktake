@@ -25866,44 +25866,59 @@ async function showApp() {
 let pollInterval = null;
 let saveInProgress = false;
 let lastSaveTime = 0;
+let lastItemsTs = new Date(0).toISOString();
+let lastSessionsTs = new Date(0).toISOString();
+let lastStatsTs = new Date(0).toISOString();
+
 async function startPolling() {
   if (pollInterval) clearInterval(pollInterval);
+  // Initialize timestamps to "now" so first poll only catches changes that happen AFTER this device loaded
+  const nowIso = new Date().toISOString();
+  lastItemsTs = nowIso;
+  lastSessionsTs = nowIso;
+  lastStatsTs = nowIso;
   pollInterval = setInterval(async () => {
     if (document.hidden) return;
     if (saveInProgress) return;
     if (Date.now() - lastSaveTime < 3000) return;
     let didRender = false;
     const inSession = window.viewMode === 'session' && activeSessionId;
-    // 1. Fetch stock_items (paginated) — only update local items when NOT in session mode
-    let allItems = [];
-    let from = 0;
-    const pageSize = 500;
-    while (true) {
-      const { data, error } = await sb.from("stock_items").select("*").order("name").range(from, from + pageSize - 1);
-      if (error) return;
-      if (!data || data.length === 0) break;
-      allItems = allItems.concat(data);
-      if (data.length < pageSize) break;
-      from += pageSize;
+
+    // 1. Fetch only stock_items changed since last poll
+    const { data: changedItems } = await sb.from("stock_items").select("*").gt("updated_at", lastItemsTs).order("updated_at", { ascending: false });
+    if (changedItems && changedItems.length > 0) {
+      lastItemsTs = changedItems[0].updated_at;
+      if (!inSession) {
+        // Merge changed rows into local items array
+        changedItems.forEach(row => {
+          const idx = items.findIndex(x => x.id === row.id);
+          if (idx >= 0) items[idx] = row;
+          else items.push(row);
+        });
+        // Re-sort to keep order consistent
+        items.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        didRender = true;
+      }
     }
-    if (!inSession && allItems.length > 0 && JSON.stringify(allItems) !== JSON.stringify(items)) {
-      items = allItems;
-      didRender = true;
-    }
-    // 2. Fetch sessions (in case snapshot changed elsewhere)
-    const { data: sessData } = await sb.from("stock_sessions").select("*").order("created_at", { ascending: false });
-    if (sessData && JSON.stringify(sessData) !== JSON.stringify(sessions)) {
-      sessions = sessData;
-      // If we are viewing the active session, swap items to its updated snapshot
-      if (window.viewMode === 'session' && activeSessionId) {
+
+    // 2. Fetch only sessions changed since last poll
+    const { data: changedSessions } = await sb.from("stock_sessions").select("*").gt("updated_at", lastSessionsTs).order("updated_at", { ascending: false });
+    if (changedSessions && changedSessions.length > 0) {
+      lastSessionsTs = changedSessions[0].updated_at;
+      changedSessions.forEach(row => {
+        const idx = sessions.findIndex(x => x.id === row.id);
+        if (idx >= 0) sessions[idx] = row;
+        else sessions.unshift(row);
+      });
+      // If we're viewing the active session, swap items to its updated snapshot
+      if (inSession) {
         const s = sessions.find(x => x.id === activeSessionId);
-        if (s && s.snapshot) {
-          items = s.snapshot;
-        }
+        if (s && s.snapshot) items = s.snapshot;
       }
       didRender = true;
     }
-    // 3. Fetch manual stat values
+
+    // 3. Fetch manual stat values (small, cheap; just check both keys)
     const { data: stats } = await sb.from("app_settings").select("key, value").in("key", ["manual_stat_wrote", "manual_stat_warranty"]);
     if (stats) {
       stats.forEach(row => {
@@ -25912,6 +25927,7 @@ async function startPolling() {
         if (row.key === "manual_stat_warranty" && manualStatValues.warranty !== v) { manualStatValues.warranty = v; didRender = true; }
       });
     }
+
     if (didRender) render();
   }, 5000);
 }
