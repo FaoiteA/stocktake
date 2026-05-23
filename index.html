@@ -25859,7 +25859,19 @@ async function showApp() {
   hide('loading-overlay');
   initUsbScanner();
   render();
-  subscribeRealtime();
+  startPolling();
+}
+
+let pollInterval = null;
+async function startPolling() {
+  if (pollInterval) clearInterval(pollInterval);
+  pollInterval = setInterval(async () => {
+    if (document.hidden) return;
+    const { data, error } = await sb.from("stock_items").select("*").order("name");
+    if (error || !data) return;
+    const changed = JSON.stringify(data) !== JSON.stringify(items);
+    if (changed) { items = data; render(); }
+  }, 5000);
 }
 async function refreshData() {
   const btn = document.getElementById('refresh-btn');
