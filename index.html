@@ -25873,7 +25873,8 @@ async function startPolling() {
     if (saveInProgress) return;
     if (Date.now() - lastSaveTime < 3000) return;
     let didRender = false;
-    // 1. Fetch stock_items (paginated)
+    const inSession = window.viewMode === 'session' && activeSessionId;
+    // 1. Fetch stock_items (paginated) — only update local items when NOT in session mode
     let allItems = [];
     let from = 0;
     const pageSize = 500;
@@ -25885,7 +25886,7 @@ async function startPolling() {
       if (data.length < pageSize) break;
       from += pageSize;
     }
-    if (allItems.length > 0 && JSON.stringify(allItems) !== JSON.stringify(items)) {
+    if (!inSession && allItems.length > 0 && JSON.stringify(allItems) !== JSON.stringify(items)) {
       items = allItems;
       didRender = true;
     }
