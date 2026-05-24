@@ -25925,7 +25925,8 @@ async function showApp() {
   const { data: setting } = await sb.from('app_settings').select('value').eq('key', 'active_session_id').single();
   await loadSessions();
   await loadSessions();
-  if (setting && setting.value) {
+  // Always open on Current Stock (do not auto-restore session)
+  if (false && setting && setting.value) {
     activeSessionId = setting.value;
     window.viewMode = 'session';
     updateActiveSessionBar();
