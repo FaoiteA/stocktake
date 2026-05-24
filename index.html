@@ -438,6 +438,7 @@ CREATE TRIGGER stock_items_updated_at
       <button class="icon-btn" onclick="openCameraScanner()" title="Scan" id="cam-btn">📷</button>
       <button class="icon-btn" id="usb-btn" onclick="toggleScanMode()" title="USB Scanner">⌨️</button>
       <button class="icon-btn" onclick="resetAllQty()" title="Reset all quantities to zero">🔄</button>
+      <button class="icon-btn" onclick="doBackup()" title="Backup all data">💾</button>
       <button class="icon-btn" onclick="doLogout()" title="Sign out">⏻</button>
     </div>
   </div>
@@ -25833,6 +25834,78 @@ async function showSignup() {
   if (error) { alert('Error: ' + error.message); return; }
   alert('Account created! Check your email to confirm, then sign in.');
 }
+async function doBackup() {
+  showSync();
+  try {
+    // Fetch all stock_items (paginated)
+    let allItems = [];
+    let from = 0;
+    const pageSize = 500;
+    while (true) {
+      const { data, error } = await sb.from('stock_items').select('*').order('name').range(from, from + pageSize - 1);
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+      allItems = allItems.concat(data);
+      if (data.length < pageSize) break;
+      from += pageSize;
+    }
+    // Fetch all sessions
+    const { data: sessions } = await sb.from('stock_sessions').select('*').order('created_at', { ascending: false });
+    // Fetch all settings
+    const { data: settings } = await sb.from('app_settings').select('*');
+
+    const stamp = new Date().toISOString().slice(0,16).replace(/[:T]/g,'-');
+
+    // --- JSON backup ---
+    const backup = {
+      exported_at: new Date().toISOString(),
+      exported_by: currentUser && currentUser.email,
+      stock_items: allItems,
+      stock_sessions: sessions || [],
+      app_settings: settings || []
+    };
+    const jsonBlob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+    const jsonUrl = URL.createObjectURL(jsonBlob);
+    const a1 = document.createElement('a');
+    a1.href = jsonUrl;
+    a1.download = 'stocktake-backup-' + stamp + '.json';
+    document.body.appendChild(a1);
+    a1.click();
+    document.body.removeChild(a1);
+    URL.revokeObjectURL(jsonUrl);
+
+    // --- CSV backup (stock_items only) ---
+    if (allItems.length > 0) {
+      const headers = Object.keys(allItems[0]);
+      const escape = (v) => {
+        if (v === null || v === undefined) return '';
+        const s = typeof v === 'object' ? JSON.stringify(v) : String(v);
+        if (s.includes(',') || s.includes('"') || s.includes('\n')) return '"' + s.replace(/"/g, '""') + '"';
+        return s;
+      };
+      const rows = [headers.join(',')];
+      allItems.forEach(item => {
+        rows.push(headers.map(h => escape(item[h])).join(','));
+      });
+      const csvBlob = new Blob([rows.join('\n')], { type: 'text/csv' });
+      const csvUrl = URL.createObjectURL(csvBlob);
+      const a2 = document.createElement('a');
+      a2.href = csvUrl;
+      a2.download = 'stocktake-stock_items-' + stamp + '.csv';
+      document.body.appendChild(a2);
+      a2.click();
+      document.body.removeChild(a2);
+      URL.revokeObjectURL(csvUrl);
+    }
+
+    hideSync();
+    toast('Backup downloaded (' + allItems.length + ' items, ' + (sessions||[]).length + ' sessions)');
+  } catch (e) {
+    hideSync();
+    toast('Backup failed: ' + e.message);
+  }
+}
+
 async function doLogout() {
   await sb.auth.signOut(); items = [];
   hide('app'); document.getElementById('fab').style.display = 'none';
