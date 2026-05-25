@@ -447,7 +447,7 @@ CREATE TRIGGER stock_items_updated_at
 
   <div class="value-strip">
     <div class="vstat"><div class="vstat-lbl">Parts</div><div class="vstat-val" id="vs-total">1380</div></div>
-    <div class="vstat"><div class="vstat-lbl">Stock Value</div><div class="vstat-val green" id="vs-value">€2,431</div></div>
+    <div class="vstat" title="Net Stock Value = Total Stock - Dead Stock - Paid/Claimed - Wrote Off - Unpaid Warranty"><div class="vstat-lbl">Stock Value <span style="opacity:0.5;font-size:10px;">ⓘ</span></div><div class="vstat-val green" id="vs-value">€2,431</div></div>
     <div class="vstat"><div class="vstat-lbl">Out of Stock</div><div class="vstat-val red" id="vs-out">1339</div></div>
     <div class="vstat" style="display:none" id="vs-low-wrap"><div class="vstat-lbl">Low Stock</div><div class="vstat-val amber" id="vs-low">0</div></div>
     <div class="vstat"><div class="vstat-lbl">Counted</div><div class="vstat-val amber" id="vs-counted">0%</div></div>
@@ -455,6 +455,7 @@ CREATE TRIGGER stock_items_updated_at
     <div class="vstat"><div class="vstat-lbl">Paid/Claimed</div><div class="vstat-val green" id="vs-paid">€0</div></div>
     <div class="vstat" onclick="openManualStat('wrote')" style="cursor:pointer" title="Click to edit"><div class="vstat-lbl">Wrote Off ✏️</div><div class="vstat-val amber" id="vs-wrote">€0</div></div>
     <div class="vstat" onclick="openManualStat('warranty')" style="cursor:pointer" title="Click to edit"><div class="vstat-lbl">Unpaid Warranty ✏️</div><div class="vstat-val amber" id="vs-warranty">€0</div></div>
+    <div class="vstat" title="Total Stock Value (gross) = sum of all stock and adjustments before deductions"><div class="vstat-lbl">Gross Total <span style="opacity:0.5;font-size:10px;">ⓘ</span></div><div class="vstat-val" id="vs-gross">€0</div></div>
   </div>
 
   <div class="tabs">
@@ -26145,6 +26146,8 @@ function render() {
 
   document.getElementById('vs-total').textContent = items.length;
   document.getElementById('vs-value').textContent = fmt(netVal);
+  const grossEl = document.getElementById('vs-gross');
+  if (grossEl) grossEl.textContent = fmt(netVal + deadVal + paidVal + wroteVal + warrantyVal);
   document.getElementById('vs-out').textContent = outCount;
   const lowCount = items.filter(p => p.qty > 0 && p.min_qty > 0 && p.qty <= p.min_qty).length;
   document.getElementById('vs-low').textContent = lowCount;
