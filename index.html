@@ -25925,10 +25925,10 @@ async function showApp() {
   const { data: setting } = await sb.from('app_settings').select('value').eq('key', 'active_session_id').single();
   await loadSessions();
   await loadSessions();
-  // Always open on Current Stock (do not auto-restore session)
-  if (false && setting && setting.value) {
+  // Load active session ID so the switch hint appears, but stay on Current Stock view
+  if (setting && setting.value) {
     activeSessionId = setting.value;
-    window.viewMode = 'session';
+    window.viewMode = 'live';
     updateActiveSessionBar();
   }
   hide('loading-overlay');
