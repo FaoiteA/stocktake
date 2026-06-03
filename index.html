@@ -84,11 +84,15 @@ body{font-family:'DM Sans',sans-serif;color:var(--text);display:flex;flex-direct
 #app.hidden{display:none;}
 
 /* Topbar */
-.topbar{background:var(--bg2);border-bottom:1px solid var(--border);padding:calc(var(--safe-top) + 10px) 16px 10px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
-.topbar-left{display:flex;align-items:center;gap:10px;}
+.topbar{background:var(--bg2);border-bottom:1px solid var(--border);padding:calc(var(--safe-top) + 10px) 16px 10px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:10px;}
+.topbar-left{display:flex;align-items:center;gap:10px;flex-shrink:0;}
 .topbar-title{font-size:16px;font-weight:700;letter-spacing:-0.3px;}
 .topbar-user{font-size:11px;color:var(--text3);}
-.topbar-actions{display:flex;gap:6px;}
+.topbar-actions{display:flex;gap:6px;overflow-x:auto;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;flex-wrap:nowrap;min-width:0;padding-bottom:4px;}
+.topbar-actions::-webkit-scrollbar{height:4px;}
+.topbar-actions::-webkit-scrollbar-thumb{background:var(--surface2);border-radius:2px;}
+.topbar-actions::-webkit-scrollbar-track{background:transparent;}
+.topbar-actions .icon-btn{flex-shrink:0;scroll-snap-align:start;}
 .icon-btn{width:36px;height:36px;border-radius:9px;border:none;background:var(--surface2);color:var(--text2);font-size:16px;display:flex;align-items:center;justify-content:center;cursor:pointer;}
 .icon-btn:active{background:var(--bg3);}
 .icon-btn.active{background:var(--accent-bg);color:var(--accent);}
@@ -129,10 +133,11 @@ body{font-family:'DM Sans',sans-serif;color:var(--text);display:flex;flex-direct
 .part-item.counted{border-left:3px solid var(--green);}
 .part-item.discrepancy{border-left:3px solid var(--amber);}
 .part-info{flex:1;min-width:0;}
-.part-name{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text);}
-.part-meta{font-size:11px;color:var(--text3);margin-top:2px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+.part-name{font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text);font-family:'DM Mono',monospace;letter-spacing:-0.2px;}
+.part-meta{font-size:11px;color:var(--text3);margin-top:3px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+.part-desc{font-size:11px;color:var(--text2);}
 .part-sku{font-family:'DM Mono',monospace;font-size:10px;color:var(--text2);}
-.part-loc{background:var(--accent-bg);border:1px solid rgba(59,130,246,0.3);border-radius:6px;padding:2px 7px;font-size:11px;font-weight:600;color:#93c5fd;}
+.part-loc{background:var(--accent-bg);border:1px solid rgba(59,130,246,0.3);border-radius:6px;padding:3px 9px;font-size:13px;font-weight:700;color:#93c5fd;}
 .part-cost{font-size:11px;color:var(--text3);}
 .part-right{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;}
 .part-qty{font-size:20px;font-weight:700;color:var(--text);letter-spacing:-0.5px;}
@@ -25649,6 +25654,28 @@ const UNDO_MAX = 10;
 let undoStack = [];
 let redoStack = [];
 
+function setupIconLongPress() {
+  document.querySelectorAll('.topbar-actions .icon-btn').forEach(btn => {
+    let timer = null;
+    const start = (e) => {
+      timer = setTimeout(() => {
+        const title = btn.getAttribute('title');
+        if (title) toast(title);
+        btn._longPressFired = true;
+      }, 500);
+    };
+    const cancel = () => { if (timer) { clearTimeout(timer); timer = null; } };
+    btn.addEventListener('pointerdown', start);
+    btn.addEventListener('pointerup', cancel);
+    btn.addEventListener('pointerleave', cancel);
+    btn.addEventListener('pointercancel', cancel);
+    // Block the click after a long-press so it doesn't fire the action
+    btn.addEventListener('click', (e) => {
+      if (btn._longPressFired) { e.stopPropagation(); e.preventDefault(); btn._longPressFired = false; }
+    }, true);
+  });
+}
+
 function loadUndoStacks() {
   try {
     undoStack = JSON.parse(localStorage.getItem('undoStack') || '[]');
@@ -25935,6 +25962,7 @@ async function showApp() {
   hide('loading-overlay');
   initUsbScanner();
   render();
+  setupIconLongPress();
   startPolling();
 }
 
@@ -26196,9 +26224,9 @@ function render() {
     else if (p.counted_qty !== null) badge = `<span class="badge badge-counted">✓</span>`;
     return `<div class="part-item ${cls}" onclick="openDetail('${p.id}')" oncontextmenu="openCtxMenu(event,'${p.id}')" onpointerdown="startLongPress(event,'${p.id}')" onpointerup="cancelLongPress()" onpointercancel="cancelLongPress()" onpointermove="cancelLongPress()">
       <div class="part-info">
-        <div class="part-name">${esc(p.name||p.sku)}</div>
+        <div class="part-name">${esc(p.sku)}</div>
         <div class="part-meta">
-          <span class="part-sku">${esc(p.sku)}</span>
+          ${p.name && p.name !== p.sku ? `<span class="part-desc">${esc(p.name)}</span>` : ''}
           ${p.location ? `<span class="part-loc">📍 ${esc(p.location)}</span>` : ''}
           ${p.area ? `<span class="part-loc" style="background:rgba(168,85,247,0.15);border-color:rgba(168,85,247,0.3);color:#d8b4fe;">${esc(p.area)}</span>` : ''}
           ${p.cost ? `<span class="part-cost">${fmt(val)}</span>` : ''}
@@ -26208,7 +26236,7 @@ function render() {
         ${badge}
         <div class="inline-qty">
           <button class="inline-btn" onclick="event.stopPropagation();inlineAdj('${p.id}',-1)">−</button>
-          <span class="part-qty" id="iqty-${p.id}">${p.qty}</span>
+          <span class="part-qty" id="iqty-${p.id}" onclick="event.stopPropagation();editQtyInline('${p.id}')" style="cursor:pointer;">${p.qty}</span>
           <button class="inline-btn" onclick="event.stopPropagation();inlineAdj('${p.id}',+1)">+</button>
         </div>
       </div>
@@ -26424,6 +26452,18 @@ async function toggleFlag(id, field, value) {
   hideSync();
   render();
   toast(value ? `Marked as ${field==='dead_stock'?'dead stock':'wrote off'}` : 'Flag removed');
+}
+
+async function editQtyInline(id) {
+  const p = items.find(x => x.id === id);
+  if (!p) return;
+  const v = prompt('Enter new quantity for ' + (p.name || p.sku) + ':', String(p.qty));
+  if (v === null) return;
+  const n = parseInt(v, 10);
+  if (isNaN(n) || n < 0) { toast('Invalid number'); return; }
+  const delta = n - p.qty;
+  if (delta === 0) return;
+  await inlineAdj(id, delta);
 }
 
 async function inlineAdj(id, delta) {
