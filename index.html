@@ -139,6 +139,7 @@ body{font-family:'DM Sans',sans-serif;color:var(--text);display:flex;flex-direct
 .part-sku{font-family:'DM Mono',monospace;font-size:10px;color:var(--text2);}
 .part-loc{background:var(--accent-bg);border:1px solid rgba(59,130,246,0.3);border-radius:6px;padding:3px 9px;font-size:13px;font-weight:700;color:#93c5fd;}
 .part-cost{font-size:11px;color:var(--text3);}
+.part-prev{font-size:10px;color:var(--text3);background:var(--surface2);border-radius:5px;padding:1px 6px;opacity:0.8;font-family:'DM Mono',monospace;}
 .part-right{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;}
 .part-qty{font-size:20px;font-weight:700;color:var(--text);letter-spacing:-0.5px;}
 .inline-qty{display:flex;align-items:center;gap:6px;flex-shrink:0;}
@@ -26230,6 +26231,7 @@ function render() {
           ${p.location ? `<span class="part-loc">📍 ${esc(p.location)}</span>` : ''}
           ${p.area ? `<span class="part-loc" style="background:rgba(168,85,247,0.15);border-color:rgba(168,85,247,0.3);color:#d8b4fe;">${esc(p.area)}</span>` : ''}
           ${p.cost ? `<span class="part-cost">${fmt(val)}</span>` : ''}
+          ${(window.viewMode !== 'session' && p.last_count !== null && p.last_count !== undefined) ? `<span class="part-prev" title="Quantity at last stock take">Prev: ${p.last_count}</span>` : ''}
         </div>
       </div>
       <div class="part-right">
@@ -26341,6 +26343,7 @@ function renderDetailBody(p) {
       ${p.location?`<div class="detail-row"><span class="detail-key">Shelf</span><span class="detail-val">${esc(p.location)}</span></div>`:''}
       ${p.cost?`<div class="detail-row"><span class="detail-key">Unit Cost</span><span class="detail-val green">€${Number(p.cost).toFixed(2)}</span></div>`:''}
       ${p.cost?`<div class="detail-row"><span class="detail-key">Stock Value</span><span class="detail-val green">${fmt(val)}</span></div>`:''}
+      ${(p.last_count !== null && p.last_count !== undefined)?`<div class="detail-row"><span class="detail-key">Last Count</span><span class="detail-val">${p.last_count}</span></div>`:''}
       ${p.notes?`<div class="detail-row"><span class="detail-key">Notes</span><span class="detail-val">${esc(p.notes)}</span></div>`:''}
     </div>
     <div class="detail-section">
@@ -27204,6 +27207,7 @@ async function pushToLive(id, name) {
     await Promise.all(batch.map(p =>
       sb.from('stock_items').update({
         qty: p.qty||0,
+        last_count: p.qty||0,
         cost: p.cost||0,
         location: p.location||'',
         area: p.area||'',
