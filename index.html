@@ -445,6 +445,7 @@ CREATE TRIGGER stock_items_updated_at
       <button class="icon-btn" onclick="openCameraScanner()" title="Scan" id="cam-btn">📷</button>
       <button class="icon-btn" id="usb-btn" onclick="toggleScanMode()" title="USB Scanner">⌨️</button>
       <button class="icon-btn" onclick="resetAllQty()" title="Reset all quantities to zero">🔄</button>
+      <button class="icon-btn" onclick="openPickLists()" title="Pick lists">🧺</button>
       <button class="icon-btn" onclick="doBackup()" title="Backup all data">💾</button>
       <button class="icon-btn" onclick="doLogout()" title="Sign out">⏻</button>
     </div>
@@ -25337,6 +25338,7 @@ CREATE TRIGGER stock_items_updated_at
   <div class="ctx-item" onclick="ctxEdit()">✏️ Edit item</div>
   <div class="ctx-item" onclick="ctxDetail()">🔍 View detail</div>
   <div class="ctx-item" onclick="ctxSupersede()">↪️ Mark as superseded</div>
+  <div class="ctx-item" onclick="ctxAddToList()">🧺 Add to pick list</div>
   <div class="ctx-item danger" onclick="ctxDelete()">🗑️ Delete item</div>
 </div>
 
@@ -25519,6 +25521,44 @@ CREATE TRIGGER stock_items_updated_at
   <div class="sheet-footer">
     <button class="btn btn-secondary" onclick="closeSessions()">Close</button>
     <button class="btn btn-primary" onclick="openNewSession()">+ New Stock Take from Current Stock</button>
+  </div>
+</div>
+
+<!-- PICK LISTS SHEET -->
+<div class="sheet-overlay" id="picklists-overlay" onclick="closePickLists()"></div>
+<div class="sheet" id="picklists-sheet">
+  <div class="sheet-handle"></div>
+  <div class="sheet-title">Pick Lists</div>
+  <div class="sheet-body" id="picklists-body"></div>
+  <div class="sheet-footer">
+    <button class="btn btn-secondary" onclick="closePickLists()">Close</button>
+    <button class="btn btn-primary" onclick="openNewPickList()">+ New List</button>
+  </div>
+</div>
+
+<!-- NEW PICK LIST SHEET -->
+<div class="sheet-overlay" id="newpicklist-overlay" onclick="closeNewPickList()"></div>
+<div class="sheet" id="newpicklist-sheet">
+  <div class="sheet-handle"></div>
+  <div class="sheet-title">New Pick List</div>
+  <div class="sheet-body">
+    <div class="field"><label>List Name</label><input id="npl-name" type="text" placeholder="e.g. Job #1234"></div>
+  </div>
+  <div class="sheet-footer">
+    <button class="btn btn-secondary" onclick="closeNewPickList()">Cancel</button>
+    <button class="btn btn-primary" onclick="savePickList()">Create</button>
+  </div>
+</div>
+
+<!-- VIEW PICK LIST SHEET -->
+<div class="sheet-overlay" id="viewpicklist-overlay" onclick="closeViewPickList()"></div>
+<div class="sheet" id="viewpicklist-sheet">
+  <div class="sheet-handle"></div>
+  <div class="sheet-title" id="viewpicklist-title">Pick List</div>
+  <div class="sheet-body" id="viewpicklist-body"></div>
+  <div class="sheet-footer">
+    <button class="btn btn-secondary" onclick="closeViewPickList()">Close</button>
+    <button class="btn btn-success" id="viewpicklist-complete-btn" onclick="completeActivePickList()">Mark Complete</button>
   </div>
 </div>
 
@@ -25973,6 +26013,7 @@ let pollInterval = null;
 let saveInProgress = false;
 let lastSaveTime = 0;
 let lastItemsTs = new Date(0).toISOString();
+let lastPickListsTs = new Date(0).toISOString();
 let lastSessionsTs = new Date(0).toISOString();
 let lastStatsTs = new Date(0).toISOString();
 
@@ -25983,6 +26024,7 @@ async function startPolling() {
   lastItemsTs = nowIso;
   lastSessionsTs = nowIso;
   lastStatsTs = nowIso;
+  lastPickListsTs = nowIso;
   pollInterval = setInterval(async () => {
     if (document.hidden) return;
     if (saveInProgress) return;
@@ -26021,6 +26063,18 @@ async function startPolling() {
         const s = sessions.find(x => x.id === activeSessionId);
         if (s && s.snapshot) items = s.snapshot;
       }
+      didRender = true;
+    }
+
+    // Fetch pick lists changed since last poll
+    const { data: changedLists } = await sb.from("pick_lists").select("*").gt("updated_at", lastPickListsTs).order("updated_at", { ascending: false });
+    if (changedLists && changedLists.length > 0) {
+      lastPickListsTs = changedLists[0].updated_at;
+      changedLists.forEach(row => {
+        const idx = pickLists.findIndex(x => x.id === row.id);
+        if (idx >= 0) pickLists[idx] = row;
+        else pickLists.unshift(row);
+      });
       didRender = true;
     }
 
@@ -27225,6 +27279,240 @@ function ctxEdit() { const id = ctxId; closeCtxMenu(); openEdit(id); }
 function ctxDetail() { const id = ctxId; closeCtxMenu(); openDetail(id); }
 function ctxDelete() { const id = ctxId; closeCtxMenu(); deleteItem(id); }
 function ctxSupersede() { const id = ctxId; closeCtxMenu(); supersedeItem(id); }
+function ctxAddToList() { const id = ctxId; closeCtxMenu(); addToPickListPrompt(id); }
+
+// ─── PICK LISTS ─────────────────────────────────────────────────────────────
+let pickLists = [];
+let activePickListId = null;
+let viewingPickListId = null;
+
+async function loadPickLists() {
+  const { data, error } = await sb.from('pick_lists').select('*').order('created_at', { ascending: false });
+  if (error) { console.error(error); return; }
+  pickLists = data || [];
+}
+
+function openPickLists() {
+  show('picklists-overlay');
+  document.getElementById('picklists-overlay').classList.add('open');
+  document.getElementById('picklists-sheet').classList.add('open');
+  renderPickListsList();
+}
+
+function closePickLists() {
+  document.getElementById('picklists-overlay').classList.remove('open');
+  document.getElementById('picklists-sheet').classList.remove('open');
+}
+
+function renderPickListsList() {
+  const body = document.getElementById('picklists-body');
+  if (!pickLists.length) {
+    body.innerHTML = '<div style="color:var(--text3);text-align:center;padding:24px;">No pick lists yet. Tap + New List to create one.</div>';
+    return;
+  }
+  body.innerHTML = pickLists.map(l => {
+    const itemCount = (l.items||[]).length;
+    const pickedCount = (l.items||[]).filter(it => it.qty_picked >= it.qty_needed).length;
+    const isActive = l.id === activePickListId;
+    const isComplete = l.completed;
+    const subtitle = new Date(l.created_at).toLocaleDateString() + ' · ' + (l.created_by||'');
+    return `<div class="picklist-row" style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:8px;${isActive?'border-color:var(--accent);':''}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <div>
+          <div style="font-weight:700;font-size:14px;">${esc(l.name||'')}${isComplete?' ✓':''}${isActive?' <span style="color:var(--accent);font-size:11px;">• ACTIVE</span>':''}</div>
+          <div style="font-size:11px;color:var(--text3);">${subtitle}</div>
+        </div>
+        <div style="text-align:right;font-size:12px;color:var(--text2);">${pickedCount}/${itemCount}</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button class="btn btn-secondary" style="flex:1;padding:6px;font-size:12px;" onclick="openViewPickList('${l.id}')">View</button>
+        ${!isComplete ? `<button class="btn ${isActive?'btn-secondary':'btn-primary'}" style="flex:1;padding:6px;font-size:12px;" onclick="setActivePickList('${l.id}')">${isActive?'Deactivate':'Set Active'}</button>` : ''}
+        <button class="btn" style="padding:6px 10px;font-size:12px;background:var(--surface2);color:var(--text2);" onclick="deletePickList('${l.id}')">🗑️</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openNewPickList() {
+  document.getElementById('npl-name').value = '';
+  document.getElementById('newpicklist-overlay').classList.add('open');
+  document.getElementById('newpicklist-sheet').classList.add('open');
+}
+
+function closeNewPickList() {
+  document.getElementById('newpicklist-overlay').classList.remove('open');
+  document.getElementById('newpicklist-sheet').classList.remove('open');
+}
+
+async function savePickList() {
+  const name = (document.getElementById('npl-name').value||'').trim();
+  if (!name) { toast('Enter a name'); return; }
+  showSync();
+  const { data, error } = await sb.from('pick_lists').insert({ name: name, created_by: currentUser && currentUser.email, items: [] }).select().single();
+  hideSync();
+  if (error) { toast('Error: ' + error.message); return; }
+  await loadPickLists();
+  // Auto-activate the newly created list
+  activePickListId = data.id;
+  closeNewPickList();
+  renderPickListsList();
+  toast('✓ Created "' + name + '"');
+}
+
+function setActivePickList(id) {
+  activePickListId = (activePickListId === id) ? null : id;
+  renderPickListsList();
+  toast(activePickListId ? '✓ Set active' : 'No active list');
+}
+
+async function deletePickList(id) {
+  const l = pickLists.find(x => x.id === id);
+  if (!l) return;
+  if (!confirm('Delete pick list "' + (l.name||'') + '"?')) return;
+  showSync();
+  const { error } = await sb.from('pick_lists').delete().eq('id', id);
+  hideSync();
+  if (error) { toast('Error: ' + error.message); return; }
+  if (activePickListId === id) activePickListId = null;
+  await loadPickLists();
+  renderPickListsList();
+  toast('Deleted');
+}
+
+async function addToPickListPrompt(itemId) {
+  const p = items.find(x => x.id === itemId);
+  if (!p) return;
+  if (!activePickListId) {
+    // No active list — prompt to pick one or create new
+    if (!pickLists.length) {
+      if (!confirm('No pick lists yet. Create one now?')) return;
+      openPickLists();
+      openNewPickList();
+      return;
+    }
+    const choice = prompt('No active pick list set. Open the list panel and tap "Set Active" on one first.\n\nOr type a name to create a new list:');
+    if (!choice) return;
+    showSync();
+    const { data, error } = await sb.from('pick_lists').insert({ name: choice.trim(), created_by: currentUser && currentUser.email, items: [] }).select().single();
+    hideSync();
+    if (error) { toast('Error: ' + error.message); return; }
+    activePickListId = data.id;
+    pickLists.unshift(data);
+  }
+  const qtyStr = prompt('Add "' + (p.sku||'') + '" - how many do you need?', '1');
+  if (qtyStr === null) return;
+  const qty = parseInt(qtyStr, 10);
+  if (isNaN(qty) || qty < 1) { toast('Invalid quantity'); return; }
+  const list = pickLists.find(x => x.id === activePickListId);
+  if (!list) { toast('Active list not found'); return; }
+  const itemsArr = list.items || [];
+  const existing = itemsArr.find(it => it.item_id === p.id);
+  if (existing) {
+    existing.qty_needed = (existing.qty_needed||0) + qty;
+  } else {
+    itemsArr.push({ item_id: p.id, sku: p.sku, name: p.name, location: p.location||'', qty_needed: qty, qty_picked: 0 });
+  }
+  showSync();
+  const { error } = await sb.from('pick_lists').update({ items: itemsArr }).eq('id', list.id);
+  hideSync();
+  if (error) { toast('Error: ' + error.message); return; }
+  list.items = itemsArr;
+  toast('✓ Added ' + qty + ' × ' + (p.sku||'') + ' to "' + (list.name||'') + '"');
+}
+
+function openViewPickList(id) {
+  viewingPickListId = id;
+  const list = pickLists.find(x => x.id === id);
+  if (!list) return;
+  document.getElementById('viewpicklist-title').textContent = list.name || 'Pick List';
+  document.getElementById('viewpicklist-complete-btn').style.display = list.completed ? 'none' : '';
+  document.getElementById('viewpicklist-overlay').classList.add('open');
+  document.getElementById('viewpicklist-sheet').classList.add('open');
+  renderViewPickList();
+}
+
+function closeViewPickList() {
+  viewingPickListId = null;
+  document.getElementById('viewpicklist-overlay').classList.remove('open');
+  document.getElementById('viewpicklist-sheet').classList.remove('open');
+}
+
+function renderViewPickList() {
+  const list = pickLists.find(x => x.id === viewingPickListId);
+  if (!list) return;
+  const body = document.getElementById('viewpicklist-body');
+  const arr = list.items || [];
+  if (!arr.length) {
+    body.innerHTML = '<div style="color:var(--text3);text-align:center;padding:24px;">No items in this list yet. Long-press an item in the main list and choose "Add to pick list".</div>';
+    return;
+  }
+  body.innerHTML = arr.map((it, idx) => {
+    const done = (it.qty_picked||0) >= (it.qty_needed||0);
+    return `<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:6px;display:flex;align-items:center;gap:10px;${done?'opacity:0.5;':''}">
+      <input type="checkbox" ${done?'checked':''} onchange="togglePickItem(${idx})" style="width:20px;height:20px;cursor:pointer;">
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:700;font-family:'DM Mono',monospace;font-size:14px;${done?'text-decoration:line-through;':''}">${esc(it.sku||'')}</div>
+        <div style="font-size:11px;color:var(--text3);">${esc(it.name||'')}${it.location?' · 📍 '+esc(it.location):''}</div>
+      </div>
+      <div style="font-size:13px;color:var(--text2);white-space:nowrap;">
+        <input type="number" min="0" value="${it.qty_picked||0}" onchange="setPickedQty(${idx}, this.value)" style="width:50px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:4px;text-align:center;"> / ${it.qty_needed||0}
+      </div>
+      <button class="btn" style="padding:4px 8px;font-size:12px;background:var(--surface2);color:var(--text3);" onclick="removeFromPickList(${idx})">✕</button>
+    </div>`;
+  }).join('');
+}
+
+async function togglePickItem(idx) {
+  const list = pickLists.find(x => x.id === viewingPickListId);
+  if (!list || !list.items[idx]) return;
+  const it = list.items[idx];
+  const done = (it.qty_picked||0) >= (it.qty_needed||0);
+  if (done) { it.qty_picked = 0; } else { it.qty_picked = it.qty_needed||0; }
+  it.picked_at = done ? null : new Date().toISOString();
+  showSync();
+  await sb.from('pick_lists').update({ items: list.items }).eq('id', list.id);
+  hideSync();
+  renderViewPickList();
+}
+
+async function setPickedQty(idx, value) {
+  const list = pickLists.find(x => x.id === viewingPickListId);
+  if (!list || !list.items[idx]) return;
+  const n = parseInt(value, 10);
+  if (isNaN(n) || n < 0) return;
+  list.items[idx].qty_picked = n;
+  if (n >= (list.items[idx].qty_needed||0)) list.items[idx].picked_at = new Date().toISOString();
+  showSync();
+  await sb.from('pick_lists').update({ items: list.items }).eq('id', list.id);
+  hideSync();
+  renderViewPickList();
+}
+
+async function removeFromPickList(idx) {
+  const list = pickLists.find(x => x.id === viewingPickListId);
+  if (!list) return;
+  list.items.splice(idx, 1);
+  showSync();
+  await sb.from('pick_lists').update({ items: list.items }).eq('id', list.id);
+  hideSync();
+  renderViewPickList();
+}
+
+async function completeActivePickList() {
+  const list = pickLists.find(x => x.id === viewingPickListId);
+  if (!list) return;
+  if (!confirm('Mark "' + (list.name||'') + '" as complete?')) return;
+  showSync();
+  await sb.from('pick_lists').update({ completed: true }).eq('id', list.id);
+  hideSync();
+  list.completed = true;
+  if (activePickListId === list.id) activePickListId = null;
+  closeViewPickList();
+  renderPickListsList();
+  toast('✓ Marked complete');
+}
+
+
 
 async function supersedeItem(id) {
   const p = items.find(x => x.id === id);
