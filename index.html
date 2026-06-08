@@ -140,6 +140,7 @@ body{font-family:'DM Sans',sans-serif;color:var(--text);display:flex;flex-direct
 .part-loc{background:var(--accent-bg);border:1px solid rgba(59,130,246,0.3);border-radius:6px;padding:3px 9px;font-size:13px;font-weight:700;color:#93c5fd;}
 .part-cost{font-size:11px;color:var(--text3);}
 .part-prev{font-size:10px;color:var(--text3);background:var(--surface2);border-radius:5px;padding:1px 6px;opacity:0.8;font-family:'DM Mono',monospace;}
+.part-superseded{font-size:10px;color:#fca5a5;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.35);border-radius:5px;padding:1px 6px;font-family:'DM Mono',monospace;}
 .part-right{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;}
 .part-qty{font-size:20px;font-weight:700;color:var(--text);letter-spacing:-0.5px;}
 .inline-qty{display:flex;align-items:center;gap:6px;flex-shrink:0;}
@@ -25335,6 +25336,7 @@ CREATE TRIGGER stock_items_updated_at
 <div id="ctx-menu">
   <div class="ctx-item" onclick="ctxEdit()">✏️ Edit item</div>
   <div class="ctx-item" onclick="ctxDetail()">🔍 View detail</div>
+  <div class="ctx-item" onclick="ctxSupersede()">↪️ Mark as superseded</div>
   <div class="ctx-item danger" onclick="ctxDelete()">🗑️ Delete item</div>
 </div>
 
@@ -26143,6 +26145,34 @@ async function loadManualStatValuesFromSupabase() {
   } catch(e) { console.error('loadManualStatValuesFromSupabase:', e); }
 }
 function itemValue(p) { return (p.qty||0) * (p.cost||0); }
+function getChainSkus(p) {
+  // Walk forward and backward through the supersession chain starting at p
+  const skus = new Set();
+  if (!p) return [];
+  skus.add((p.sku||'').toLowerCase());
+  // Walk forward via superseded_by
+  let cur = p;
+  while (cur && cur.superseded_by) {
+    const nextSku = (cur.superseded_by||'').toLowerCase();
+    if (!nextSku || skus.has(nextSku)) break;
+    skus.add(nextSku);
+    cur = items.find(x => (x.sku||'').toLowerCase() === nextSku);
+  }
+  // Walk backward: any item whose superseded_by points to anything in our chain
+  let grew = true;
+  while (grew) {
+    grew = false;
+    items.forEach(x => {
+      const sb = (x.superseded_by||'').toLowerCase();
+      if (sb && skus.has(sb) && !skus.has((x.sku||'').toLowerCase())) {
+        skus.add((x.sku||'').toLowerCase());
+        grew = true;
+      }
+    });
+  }
+  return Array.from(skus);
+}
+
 function hasDisco(p) { return p.counted_qty !== null && p.counted_qty !== p.qty; }
 
 function render() {
@@ -26158,7 +26188,14 @@ function render() {
     if (locFilter && p.location !== locFilter && p.area !== locFilter) return false;
     if (qtyMin !== null && p.qty < qtyMin) return false;
     if (qtyMax !== null && p.qty > qtyMax) return false;
-    if (q) return (p.name||'').toLowerCase().includes(q) || (p.sku||'').toLowerCase().includes(q) || (p.location||'').toLowerCase().includes(q) || (p.area||'').toLowerCase().includes(q);
+    if (q) {
+      // Direct match on this part
+      const direct = (p.name||'').toLowerCase().includes(q) || (p.sku||'').toLowerCase().includes(q) || (p.location||'').toLowerCase().includes(q) || (p.area||'').toLowerCase().includes(q);
+      if (direct) return true;
+      // Chain match: if this part is in the same supersession chain as any matching part, include it
+      if (getChainSkus(p).some(s => s.toLowerCase().includes(q))) return true;
+      return false;
+    }
     return true;
   });
 
@@ -26232,6 +26269,7 @@ function render() {
           ${p.area ? `<span class="part-loc" style="background:rgba(168,85,247,0.15);border-color:rgba(168,85,247,0.3);color:#d8b4fe;">${esc(p.area)}</span>` : ''}
           ${p.cost ? `<span class="part-cost">${fmt(val)}</span>` : ''}
           ${(window.viewMode !== 'session' && p.last_count !== null && p.last_count !== undefined) ? `<span class="part-prev" title="Quantity at last stock take">Prev: ${p.last_count}</span>` : ''}
+          ${p.superseded_by ? `<span class="part-superseded" title="Superseded by ${esc(p.superseded_by)}">↪️ ${esc(p.superseded_by)}</span>` : ''}
         </div>
       </div>
       <div class="part-right">
@@ -27186,6 +27224,53 @@ function cancelLongPress() {
 function ctxEdit() { const id = ctxId; closeCtxMenu(); openEdit(id); }
 function ctxDetail() { const id = ctxId; closeCtxMenu(); openDetail(id); }
 function ctxDelete() { const id = ctxId; closeCtxMenu(); deleteItem(id); }
+function ctxSupersede() { const id = ctxId; closeCtxMenu(); supersedeItem(id); }
+
+async function supersedeItem(id) {
+  const p = items.find(x => x.id === id);
+  if (!p) return;
+  const newSku = prompt('Mark "' + (p.sku || '') + '" as superseded by which part number?\n(The new part will be added with the same details, qty starting at 0)');
+  if (!newSku) return;
+  const newSkuClean = newSku.trim();
+  if (!newSkuClean) return;
+  if (newSkuClean.toLowerCase() === (p.sku||'').toLowerCase()) { toast('Cannot supersede a part with itself.'); return; }
+  // If the new SKU already exists, just link to it instead of creating a duplicate
+  const existing = items.find(x => (x.sku||'').toLowerCase() === newSkuClean.toLowerCase());
+  showSync();
+  try {
+    if (!existing) {
+      // Insert new item with copied details, qty 0
+      const newItem = {
+        sku: newSkuClean,
+        name: p.name || '',
+        area: p.area || '',
+        location: p.location || '',
+        qty: 0,
+        cost: p.cost || 0,
+        notes: p.notes || '',
+        min_qty: p.min_qty || 0,
+        dead_stock: false,
+        wrote_off: false,
+        paid_claimed: false,
+        change_log: [{ ts: new Date().toISOString(), user: currentUser.email, from: null, to: 0, reason: 'Created via supersession of ' + (p.sku||'') }]
+      };
+      const { error: insErr } = await sb.from('stock_items').insert(newItem);
+      if (insErr) { hideSync(); toast('Error creating part: ' + insErr.message); return; }
+    }
+    // Update the old part's superseded_by
+    const { error: updErr } = await sb.from('stock_items').update({ superseded_by: newSkuClean }).eq('id', id);
+    if (updErr) { hideSync(); toast('Error updating: ' + updErr.message); return; }
+    await loadItems();
+    hideSync();
+    render();
+    toast('✓ ' + (p.sku||'') + ' → ' + newSkuClean);
+  } catch (e) {
+    hideSync();
+    toast('Error: ' + e.message);
+  }
+}
+
+
 
 // ── SESSIONS ─────────────────────────────────────────────────────────────────
 let sessions = [], compareSessions = [];
