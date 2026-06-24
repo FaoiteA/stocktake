@@ -25700,6 +25700,7 @@ let redoStack = [];
 function setupFabDrag() {
   const fab = document.getElementById('fab');
   if (!fab) return;
+  fab.style.touchAction = 'none';
   // Restore saved position
   try {
     const saved = JSON.parse(localStorage.getItem('fab_pos') || 'null');
