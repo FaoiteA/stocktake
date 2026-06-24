@@ -25656,6 +25656,7 @@ CREATE TRIGGER stock_items_updated_at
 <div id="loc-modal" class="hidden" onclick="closeLocModal()">
   <div class="loc-panel" onclick="event.stopPropagation()">
     <div class="loc-panel-title">Filter by Location</div>
+    <input id="loc-search" type="text" placeholder="Search locations…" oninput="filterLocList(this.value)" style="width:calc(100% - 36px);margin:0 18px 8px;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:14px;outline:none;">
     <div id="loc-list"></div>
   </div>
 </div>
@@ -26438,6 +26439,7 @@ function openLocModal() {
   }
   document.getElementById('loc-list').innerHTML = html;
   document.getElementById('loc-modal').classList.remove('hidden');
+  const locSearchEl = document.getElementById('loc-search'); if (locSearchEl) { locSearchEl.value = ''; }
 }
 function setLocFilter(v) {
   locFilter = v;
@@ -26446,6 +26448,23 @@ function setLocFilter(v) {
   closeLocModal(); render();
 }
 function closeLocModal() { document.getElementById('loc-modal').classList.add('hidden'); }
+function filterLocList(q) {
+  const els = document.querySelectorAll('#loc-list .loc-item, #loc-list [style*="uppercase"]');
+  q = q.toLowerCase().trim();
+  let lastHeader = null, headerHasVisible = false;
+  els.forEach(el => {
+    if (el.style && el.style.textTransform === 'uppercase') {
+      if (lastHeader !== null) lastHeader.style.display = headerHasVisible ? '' : 'none';
+      lastHeader = el; headerHasVisible = false;
+    } else {
+      const txt = el.textContent.toLowerCase();
+      const show = !q || txt.includes(q);
+      el.style.display = show ? '' : 'none';
+      if (show) headerHasVisible = true;
+    }
+  });
+  if (lastHeader !== null) lastHeader.style.display = headerHasVisible ? '' : 'none';
+}
 
 function openQtyModal() {
   document.getElementById('qty-min').value = qtyMin !== null ? qtyMin : '';
