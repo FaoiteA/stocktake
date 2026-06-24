@@ -25697,6 +25697,80 @@ const UNDO_MAX = 10;
 let undoStack = [];
 let redoStack = [];
 
+function setupFabDrag() {
+  const fab = document.getElementById('fab');
+  if (!fab) return;
+  // Restore saved position
+  try {
+    const saved = JSON.parse(localStorage.getItem('fab_pos') || 'null');
+    if (saved && typeof saved.x === 'number' && typeof saved.y === 'number') {
+      applyFabPos(saved.x, saved.y);
+    }
+  } catch (e) {}
+  let pressTimer = null;
+  let dragging = false;
+  let offsetX = 0, offsetY = 0;
+  let originX = 0, originY = 0;
+  const SIZE = 54;
+  function applyFabPos(x, y) {
+    // Clamp to viewport
+    const maxX = window.innerWidth - SIZE - 4;
+    const maxY = window.innerHeight - SIZE - 4;
+    x = Math.max(4, Math.min(maxX, x));
+    y = Math.max(4, Math.min(maxY, y));
+    fab.style.left = x + 'px';
+    fab.style.top = y + 'px';
+    fab.style.right = 'auto';
+    fab.style.bottom = 'auto';
+  }
+  function onMove(e) {
+    if (!dragging) return;
+    e.preventDefault();
+    const pt = e.touches ? e.touches[0] : e;
+    applyFabPos(pt.clientX - offsetX, pt.clientY - offsetY);
+  }
+  function onUp(e) {
+    if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+    if (dragging) {
+      dragging = false;
+      fab.style.opacity = '';
+      fab.style.transform = '';
+      // Save position
+      const rect = fab.getBoundingClientRect();
+      localStorage.setItem('fab_pos', JSON.stringify({ x: rect.left, y: rect.top }));
+      toast('FAB position saved');
+      // Block the click that would otherwise fire
+      fab._suppressClick = true;
+      setTimeout(() => { fab._suppressClick = false; }, 250);
+    }
+    document.removeEventListener('pointermove', onMove);
+    document.removeEventListener('pointerup', onUp);
+    document.removeEventListener('pointercancel', onUp);
+  }
+  function onDown(e) {
+    const pt = e.touches ? e.touches[0] : e;
+    originX = pt.clientX;
+    originY = pt.clientY;
+    const rect = fab.getBoundingClientRect();
+    offsetX = pt.clientX - rect.left;
+    offsetY = pt.clientY - rect.top;
+    pressTimer = setTimeout(() => {
+      dragging = true;
+      fab.style.opacity = '0.7';
+      fab.style.transform = 'scale(1.1)';
+      if (navigator.vibrate) navigator.vibrate(30);
+      document.addEventListener('pointermove', onMove, { passive: false });
+    }, 400);
+  }
+  fab.addEventListener('pointerdown', onDown);
+  fab.addEventListener('pointerup', onUp);
+  fab.addEventListener('pointercancel', onUp);
+  fab.addEventListener('pointerleave', () => { if (pressTimer && !dragging) { clearTimeout(pressTimer); pressTimer = null; } });
+  fab.addEventListener('click', (e) => {
+    if (fab._suppressClick) { e.stopPropagation(); e.preventDefault(); }
+  }, true);
+}
+
 function setupIconLongPress() {
   document.querySelectorAll('.topbar-actions .icon-btn').forEach(btn => {
     let timer = null;
@@ -26006,6 +26080,7 @@ async function showApp() {
   initUsbScanner();
   render();
   setupIconLongPress();
+  setupFabDrag();
   startPolling();
 }
 
