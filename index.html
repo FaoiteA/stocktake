@@ -26603,6 +26603,28 @@ async function adjQty(id, delta, reason) {
   if (error) toast('Sync error: ' + error.message);
 }
 
+async function saveSessionSnapshot() {
+  if (window.viewMode === 'session' && activeSessionId) {
+    const s = sessions.find(x => x.id === activeSessionId);
+    if (s) {
+      s.snapshot = items.map(p => ({...p}));
+      showSync();
+      await sb.from('stock_sessions').update({ snapshot: s.snapshot }).eq('id', activeSessionId);
+      hideSync();
+    }
+  }
+}
+async function saveSessionSnapshot() {
+  if (window.viewMode === 'session' && activeSessionId) {
+    const s = sessions.find(x => x.id === activeSessionId);
+    if (s) {
+      s.snapshot = items.map(p => ({...p}));
+      showSync();
+      await sb.from('stock_sessions').update({ snapshot: s.snapshot }).eq('id', activeSessionId);
+      hideSync();
+    }
+  }
+}
 async function saveCounted(id) {
   const val = document.getElementById('count-input').value;
   if (val === '') { toast('Enter a counted quantity'); return; }
@@ -26611,10 +26633,18 @@ async function saveCounted(id) {
   if (!p) return;
   p.counted_qty = counted;
   p.last_counted = new Date().toISOString();
-  showSync();
-  const { error } = await sb.from('stock_items').update({ counted_qty: counted, last_counted: p.last_counted }).eq('id', id);
-  hideSync();
-  if (error) { toast('Error: ' + error.message); return; }
+  if (window.viewMode === 'session' && activeSessionId) {
+    await saveSessionSnapshot();
+  } else {
+    if (window.viewMode === 'session' && activeSessionId) {
+    await saveSessionSnapshot();
+  } else {
+    showSync();
+    const { error } = await sb.from('stock_items').update({ counted_qty: counted, last_counted: p.last_counted }).eq('id', id);
+    hideSync();
+    if (error) { toast('Error: ' + error.message); return; }
+  }
+  }
   renderDetailBody(p);
   render();
   toast(counted === p.qty ? '✓ Count matches system' : `⚠ Discrepancy: system=${p.qty}, counted=${counted}`);
@@ -26625,10 +26655,18 @@ async function reconcile(id) {
   if (!p || p.counted_qty === null) return;
   if (!confirm(`Update system qty from ${p.qty} to ${p.counted_qty}?`)) return;
   p.qty = p.counted_qty;
-  showSync();
-  const { error } = await sb.from('stock_items').update({ qty: p.qty }).eq('id', id);
-  hideSync();
-  if (error) { toast('Error: ' + error.message); return; }
+  if (window.viewMode === 'session' && activeSessionId) {
+    await saveSessionSnapshot();
+  } else {
+    if (window.viewMode === 'session' && activeSessionId) {
+    await saveSessionSnapshot();
+  } else {
+    showSync();
+    const { error } = await sb.from('stock_items').update({ qty: p.qty }).eq('id', id);
+    hideSync();
+    if (error) { toast('Error: ' + error.message); return; }
+  }
+  }
   renderDetailBody(p); render();
   toast('System qty updated');
 }
@@ -26637,9 +26675,17 @@ async function toggleFlag(id, field, value) {
   const p = items.find(x => x.id === id);
   if (!p) return;
   p[field] = value;
-  showSync();
-  await sb.from('stock_items').update({ [field]: value }).eq('id', id);
-  hideSync();
+  if (window.viewMode === 'session' && activeSessionId) {
+    await saveSessionSnapshot();
+  } else {
+    if (window.viewMode === 'session' && activeSessionId) {
+    await saveSessionSnapshot();
+  } else {
+    showSync();
+    await sb.from('stock_items').update({ [field]: value }).eq('id', id);
+    hideSync();
+  }
+  }
   render();
   toast(value ? `Marked as ${field==='dead_stock'?'dead stock':'wrote off'}` : 'Flag removed');
 }
