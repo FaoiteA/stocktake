@@ -301,6 +301,9 @@ td{color:var(--text2);}
 .report-val.green{color:var(--green);}
 .report-val.red{color:var(--red);}
 .report-val.amber{color:var(--amber);}
+.sys-chk{display:inline-flex;align-items:center;gap:3px;cursor:pointer;margin-right:8px;font-size:11px;font-weight:700;color:var(--text3);user-select:none;}
+.sys-chk input{width:16px;height:16px;accent-color:#29dcff;cursor:pointer;margin:0;}
+.sys-chk input:checked+span{color:#29dcff;}
 </style>
 </head>
 <body>
@@ -475,6 +478,7 @@ CREATE TRIGGER stock_items_updated_at
     <button class="tab" id="tab-wrote" onclick="setTab(&#39;wrote&#39;)">Wrote Off</button>
     <button class="tab" id="tab-low" onclick="setTab(&#39;low&#39;)">Low Stock</button>
     <button class="tab" id="tab-paid" onclick="setTab(&#39;paid&#39;)">Paid/Claimed</button>
+    <button class="tab" id="tab-system" onclick="setTab(&#39;system&#39;)">System</button>
   </div>
 
   <div class="search-bar">
@@ -26316,6 +26320,7 @@ function render() {
     if (tab === 'wrote' && !p.wrote_off) return false;
     if (tab === 'low' && !(p.qty > 0 && p.min_qty > 0 && p.qty <= p.min_qty)) return false;
     if (tab === 'paid' && !p.paid_claimed) return false;
+    if (tab === 'system' && !p.system_counted) return false;
     if (locFilter && p.location !== locFilter && p.area !== locFilter) return false;
     if (qtyMin !== null && p.qty < qtyMin) return false;
     if (qtyMax !== null && p.qty > qtyMax) return false;
@@ -26390,6 +26395,7 @@ function render() {
     else if (p.min_qty > 0 && p.qty <= p.min_qty) badge = `<span class="badge badge-low">Low</span>`;
     if (p.paid_claimed) badge = `<span class="badge" style="background:var(--blue-bg);color:var(--blue);">Paid</span>`;
     else if (disco) badge = `<span class="badge badge-disc">±${p.counted_qty - p.qty}</span>`;
+    else if (p.system_counted) badge = `<span class="badge" style="background:rgba(41,220,255,0.15);border-color:rgba(41,220,255,0.3);color:#29dcff;">S</span>`;
     else if (p.counted_qty !== null) badge = `<span class="badge badge-counted">✓</span>`;
     return `<div class="part-item ${cls}" onclick="openDetail('${p.id}')" oncontextmenu="openCtxMenu(event,'${p.id}')" onpointerdown="startLongPress(event,'${p.id}')" onpointerup="cancelLongPress()" onpointercancel="cancelLongPress()" onpointermove="cancelLongPress()">
       <div class="part-info">
@@ -26405,6 +26411,7 @@ function render() {
       </div>
       <div class="part-right">
         ${badge}
+        ${window.viewMode==='session'?`<label class="sys-chk" title="System count" onclick="event.stopPropagation()"><input type="checkbox" ${p.system_counted?'checked':''} onchange="toggleSystemCount('${p.id}',this.checked)"/><span>S</span></label>`:''}
         <div class="inline-qty">
           <button class="inline-btn" onclick="event.stopPropagation();inlineAdj('${p.id}',-1)">−</button>
           <span class="part-qty" id="iqty-${p.id}" onclick="event.stopPropagation();editQtyInline('${p.id}')" style="cursor:pointer;">${p.qty}</span>
@@ -26546,7 +26553,7 @@ function renderDetailBody(p) {
       ${disco?`<div class="detail-row"><span class="detail-key">Discrepancy</span><span class="detail-val red">${p.counted_qty - p.qty > 0 ? '+' : ''}${p.counted_qty - p.qty}</span></div>`:''}`:
       '<div style="color:var(--text3);font-size:13px;padding:8px 0;">Not yet counted</div>'}
       <div class="stocktake-input">
-        <input type="text" id="count-input" placeholder="Qty or S for system" min="0" value="${p.counted_qty !== null ? (p.system_counted ? 's' : p.counted_qty) : ''}"/>
+        <input type="number" id="count-input" placeholder="Enter counted qty" min="0" value="${p.counted_qty !== null ? p.counted_qty : ''}"/>
         <button class="btn btn-success" onclick="saveCounted('${p.id}')">✓ Count</button>
       </div>
       ${p.counted_qty!==null && disco?`<button class="btn btn-primary" style="width:100%;margin-top:10px;" onclick="reconcile('${p.id}')">Update system qty to ${displayCounted(p)}</button>`:''}
@@ -26564,6 +26571,9 @@ function renderDetailBody(p) {
       <div class="toggle-row">
         <span class="toggle-label">Paid / Claimed</span>
         <label class="toggle"><input type="checkbox" ${p.paid_claimed?'checked':''} onchange="toggleFlag('${p.id}','paid_claimed',this.checked)"/><span class="toggle-slider"></span></label>
+      </div>
+      <div class="detail-row"><span class="detail-key">System Count</span>
+        <label class="toggle"><input type="checkbox" ${p.system_counted?'checked':''} onchange="toggleSystemCount('${p.id}',this.checked)"/><span class="toggle-slider"></span></label>
       </div>
     </div>
     ${p.min_qty > 0 ? `<div class="detail-row"><span class="detail-key">Low stock alert at</span><span class="detail-val amber">${p.min_qty} units</span></div>` : ''}
@@ -26605,6 +26615,29 @@ async function adjQty(id, delta, reason) {
 
 function displayCounted(p) { return p.system_counted ? 'S' : p.counted_qty; }
 
+async function toggleSystemCount(id, checked) {
+  const p = items.find(x => x.id === id);
+  if (!p) return;
+  p.system_counted = checked;
+  if (checked) {
+    p.counted_qty = p.qty;
+    p.last_counted = new Date().toISOString();
+  } else {
+    p.counted_qty = null;
+    p.last_counted = null;
+  }
+  if (window.viewMode === 'session' && activeSessionId) {
+    await saveSessionSnapshot();
+  } else {
+    showSync();
+    await sb.from('stock_items').update({ counted_qty: p.counted_qty, last_counted: p.last_counted }).eq('id', id);
+    hideSync();
+  }
+  if (editId === id) renderDetailBody(p);
+  render();
+  toast(checked ? 'Marked as system count' : 'System count removed');
+}
+
 async function saveSessionSnapshot() {
   if (window.viewMode === 'session' && activeSessionId) {
     const s = sessions.find(x => x.id === activeSessionId);
@@ -26630,12 +26663,10 @@ async function saveSessionSnapshot() {
 async function saveCounted(id) {
   const val = document.getElementById('count-input').value;
   if (val === '') { toast('Enter a counted quantity'); return; }
+  const counted = parseInt(val);
+  if (isNaN(counted)) { toast('Enter a valid number'); return; }
   const p = items.find(x => x.id === id);
   if (!p) return;
-  const isSystem = val.toLowerCase() === 's';
-  const counted = isSystem ? p.qty : parseInt(val);
-  if (isNaN(counted)) { toast('Enter a number or S for system qty'); return; }
-  p.system_counted = isSystem;
     p.counted_qty = counted;
   p.last_counted = new Date().toISOString();
   if (window.viewMode === 'session' && activeSessionId) {
@@ -26963,9 +26994,9 @@ function showScanFound(p) {
       <div style="margin-bottom:12px;">
         <div style="font-size:12px;color:var(--text2);margin-bottom:6px;">Stock take — enter counted qty:</div>
         <div style="display:flex;gap:8px;">
-          <input type="text" id="scan-count-input" placeholder="Qty or S for system" min="0"
+          <input type="number" id="scan-count-input" placeholder="Counted qty" min="0"
             style="flex:1;padding:10px;border:1px solid var(--border-md);border-radius:10px;font-size:16px;background:var(--bg);color:var(--text);font-family:inherit;text-align:center;"
-            value="${p.counted_qty !== null ? (p.system_counted ? 's' : p.counted_qty) : ''}"/>
+            value="${p.counted_qty !== null ? p.counted_qty : ''}"/>
           <button class="btn btn-success" onclick="scanSaveCount('${p.id}')">✓</button>
         </div>
       </div>
@@ -27007,12 +27038,10 @@ async function scanAdj(id, delta) {
 async function scanSaveCount(id) {
   const val = document.getElementById('scan-count-input').value;
   if (val === '') { toast('Enter counted qty'); return; }
+  const counted = parseInt(val);
+  if (isNaN(counted)) { toast('Enter a valid number'); return; }
   const p = items.find(x => x.id === id);
   if (!p) return;
-  const isSystem = val.toLowerCase() === 's';
-  const counted = isSystem ? p.qty : parseInt(val);
-  if (isNaN(counted)) { toast('Enter a number or S for system qty'); return; }
-  p.system_counted = isSystem;
     p.counted_qty = counted;
   p.last_counted = new Date().toISOString();
   showSync();
