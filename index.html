@@ -26541,15 +26541,15 @@ function renderDetailBody(p) {
       </div>
       ${p.counted_qty!==null?`<div class="detail-row">
         <span class="detail-key">Counted qty</span>
-        <span class="detail-val ${disco?'amber':'green'}">${p.counted_qty}</span>
+        <span class="detail-val ${disco?'amber':'green'}">${displayCounted(p)}</span>
       </div>
       ${disco?`<div class="detail-row"><span class="detail-key">Discrepancy</span><span class="detail-val red">${p.counted_qty - p.qty > 0 ? '+' : ''}${p.counted_qty - p.qty}</span></div>`:''}`:
       '<div style="color:var(--text3);font-size:13px;padding:8px 0;">Not yet counted</div>'}
       <div class="stocktake-input">
-        <input type="number" id="count-input" placeholder="Enter counted qty" min="0" value="${p.counted_qty !== null ? p.counted_qty : ''}"/>
+        <input type="text" id="count-input" placeholder="Qty or S for system" min="0" value="${p.counted_qty !== null ? (p.system_counted ? 's' : p.counted_qty) : ''}"/>
         <button class="btn btn-success" onclick="saveCounted('${p.id}')">✓ Count</button>
       </div>
-      ${p.counted_qty!==null && disco?`<button class="btn btn-primary" style="width:100%;margin-top:10px;" onclick="reconcile('${p.id}')">Update system qty to ${p.counted_qty}</button>`:''}
+      ${p.counted_qty!==null && disco?`<button class="btn btn-primary" style="width:100%;margin-top:10px;" onclick="reconcile('${p.id}')">Update system qty to ${displayCounted(p)}</button>`:''}
     </div>
     <div class="detail-section">
       <div class="detail-section-title">Status</div>
@@ -26603,6 +26603,8 @@ async function adjQty(id, delta, reason) {
   if (error) toast('Sync error: ' + error.message);
 }
 
+function displayCounted(p) { return p.system_counted ? 'S' : p.counted_qty; }
+
 async function saveSessionSnapshot() {
   if (window.viewMode === 'session' && activeSessionId) {
     const s = sessions.find(x => x.id === activeSessionId);
@@ -26628,10 +26630,13 @@ async function saveSessionSnapshot() {
 async function saveCounted(id) {
   const val = document.getElementById('count-input').value;
   if (val === '') { toast('Enter a counted quantity'); return; }
-  const counted = parseInt(val);
   const p = items.find(x => x.id === id);
   if (!p) return;
-  p.counted_qty = counted;
+  const isSystem = val.toLowerCase() === 's';
+  const counted = isSystem ? p.qty : parseInt(val);
+  if (isNaN(counted)) { toast('Enter a number or S for system qty'); return; }
+  p.system_counted = isSystem;
+    p.counted_qty = counted;
   p.last_counted = new Date().toISOString();
   if (window.viewMode === 'session' && activeSessionId) {
     await saveSessionSnapshot();
@@ -26958,9 +26963,9 @@ function showScanFound(p) {
       <div style="margin-bottom:12px;">
         <div style="font-size:12px;color:var(--text2);margin-bottom:6px;">Stock take — enter counted qty:</div>
         <div style="display:flex;gap:8px;">
-          <input type="number" id="scan-count-input" placeholder="Counted qty" min="0"
+          <input type="text" id="scan-count-input" placeholder="Qty or S for system" min="0"
             style="flex:1;padding:10px;border:1px solid var(--border-md);border-radius:10px;font-size:16px;background:var(--bg);color:var(--text);font-family:inherit;text-align:center;"
-            value="${p.counted_qty !== null ? p.counted_qty : ''}"/>
+            value="${p.counted_qty !== null ? (p.system_counted ? 's' : p.counted_qty) : ''}"/>
           <button class="btn btn-success" onclick="scanSaveCount('${p.id}')">✓</button>
         </div>
       </div>
@@ -27002,10 +27007,13 @@ async function scanAdj(id, delta) {
 async function scanSaveCount(id) {
   const val = document.getElementById('scan-count-input').value;
   if (val === '') { toast('Enter counted qty'); return; }
-  const counted = parseInt(val);
   const p = items.find(x => x.id === id);
   if (!p) return;
-  p.counted_qty = counted;
+  const isSystem = val.toLowerCase() === 's';
+  const counted = isSystem ? p.qty : parseInt(val);
+  if (isNaN(counted)) { toast('Enter a number or S for system qty'); return; }
+  p.system_counted = isSystem;
+    p.counted_qty = counted;
   p.last_counted = new Date().toISOString();
   showSync();
   await sb.from('stock_items').update({ counted_qty: counted, last_counted: p.last_counted }).eq('id', id);
@@ -27249,7 +27257,7 @@ function exportCSV() {
   ];
   items.forEach(p => {
     const disco = p.counted_qty !== null ? p.counted_qty - p.qty : '';
-    rows.push([p.sku, p.name, p.area, p.location, p.qty, p.cost, itemValue(p), p.dead_stock?'Yes':'', p.paid_claimed?'Yes':'', p.wrote_off?'Yes':'', p.counted_qty!==null?p.counted_qty:'', disco, p.notes]);
+    rows.push([p.sku, p.name, p.area, p.location, p.qty, p.cost, itemValue(p), p.dead_stock?'Yes':'', p.paid_claimed?'Yes':'', p.wrote_off?'Yes':'', p.counted_qty!==null?(p.system_counted?'S':p.counted_qty):'', disco, p.notes]);
   });
   const csv = rows.map(r=>r.map(c=>`"${String(c||'').replace(/"/g,'""')}"`).join(',')).join('\n');
   const a = document.createElement('a');
@@ -27338,7 +27346,7 @@ function openReport() {
       <div class="report-title">Stock Take Progress</div>
       <div class="report-row"><span class="report-key">Counted</span><span class="report-val green">${counted.length} of ${items.length} (${pct}%)</span></div>
       <div class="report-row"><span class="report-key">Discrepancies found</span><span class="report-val ${discos.length?'amber':'green'}">${discos.length} items</span></div>
-      ${discos.length?`<div class="report-row"><span class="report-key">Top discrepancies</span><span class="report-val" style="font-size:12px;text-align:right;">${discos.slice(0,3).map(p=>`${p.sku}: ${p.qty}→${p.counted_qty}`).join('<br>')}</span></div>`:''}
+      ${discos.length?`<div class="report-row"><span class="report-key">Top discrepancies</span><span class="report-val" style="font-size:12px;text-align:right;">${discos.slice(0,3).map(p=>`${p.sku}: ${p.qty}→${displayCounted(p)}`).join('<br>')}</span></div>`:''}
     </div>
     <div class="report-section">
       <div class="report-title">By Area</div>
@@ -27760,7 +27768,7 @@ async function setActiveSession(id, name) {
     await sb.from('app_settings').upsert({ key: 'active_session_id', value: id });
     const s = sessions.find(x => x.id === id);
     if (s && s.snapshot && s.snapshot.length) {
-      items = s.snapshot.map(p => ({...p, change_log: p.change_log||[], min_qty: p.min_qty||0, counted_qty: p.counted_qty||null, dead_stock: p.dead_stock||false, wrote_off: p.wrote_off||false, paid_claimed: p.paid_claimed||false}));
+      items = s.snapshot.map(p => ({...p, change_log: p.change_log||[], min_qty: p.min_qty||0, counted_qty: p.counted_qty||null, system_counted: p.system_counted||false, dead_stock: p.dead_stock||false, wrote_off: p.wrote_off||false, paid_claimed: p.paid_claimed||false}));
     }
     window.viewMode = 'session';
     updateTopbarTitle();
@@ -27803,7 +27811,7 @@ function updateActiveSessionBar() {
     const s = sessions.find(x => x.id === activeSessionId);
     if (s) {
       if (window.viewMode === 'session') {
-        items = s.snapshot.map(p => ({...p, change_log: p.change_log||[], min_qty: p.min_qty||0, counted_qty: p.counted_qty||null, dead_stock: p.dead_stock||false, wrote_off: p.wrote_off||false, paid_claimed: p.paid_claimed||false}));
+        items = s.snapshot.map(p => ({...p, change_log: p.change_log||[], min_qty: p.min_qty||0, counted_qty: p.counted_qty||null, system_counted: p.system_counted||false, dead_stock: p.dead_stock||false, wrote_off: p.wrote_off||false, paid_claimed: p.paid_claimed||false}));
       }
     } else {
       activeSessionId = null;
@@ -27822,7 +27830,7 @@ async function toggleViewMode() {
     await loadItems();
   } else {
     window.viewMode = 'session';
-    items = s.snapshot.map(p => ({...p, change_log: p.change_log||[], min_qty: p.min_qty||0, counted_qty: p.counted_qty||null, dead_stock: p.dead_stock||false, wrote_off: p.wrote_off||false, paid_claimed: p.paid_claimed||false}));
+    items = s.snapshot.map(p => ({...p, change_log: p.change_log||[], min_qty: p.min_qty||0, counted_qty: p.counted_qty||null, system_counted: p.system_counted||false, dead_stock: p.dead_stock||false, wrote_off: p.wrote_off||false, paid_claimed: p.paid_claimed||false}));
   }
   updateTopbarTitle();
   render();
@@ -27927,7 +27935,7 @@ async function saveSession() {
   const wroteVal = wroteValManual || wroteValCalc;
   const outCount = items.filter(p=>p.qty===0).length;
   // Save snapshot of current stock with quantities reset to zero for counting
-  const snapshot = items.map(p => ({ id:p.id, sku:p.sku, name:p.name, qty:0, cost:p.cost, location:p.location, area:p.area, dead_stock:p.dead_stock, wrote_off:p.wrote_off, paid_claimed:p.paid_claimed, counted_qty:null, min_qty:p.min_qty||0, change_log:[] }));
+  const snapshot = items.map(p => ({ id:p.id, sku:p.sku, name:p.name, qty:0, cost:p.cost, location:p.location, area:p.area, dead_stock:p.dead_stock, wrote_off:p.wrote_off, paid_claimed:p.paid_claimed, counted_qty:null, system_counted:false, min_qty:p.min_qty||0, change_log:[] }));
   const sessionData = {
     name,
     notes: document.getElementById('ns-notes').value.trim(),
