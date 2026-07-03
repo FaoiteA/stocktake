@@ -26791,6 +26791,9 @@ async function pcAccept(idx) {
   if (!p) { toast('Part not found'); return; }
   p.cost = m.dmsCost;
   m.status = 'accepted';
+  p.counted_qty = p.qty;
+  p.system_counted = true;
+  p.last_counted = new Date().toISOString();
   if (window.viewMode === 'session' && activeSessionId) {
     await saveSessionSnapshot();
   } else {
@@ -26800,9 +26803,6 @@ async function pcAccept(idx) {
   }
   updatePcRow(idx);
   render();
-  p.counted_qty = p.qty;
-  p.system_counted = true;
-  p.last_counted = new Date().toISOString();
   toast(m.sku + ' updated to ' + fmt(m.dmsCost));
 }
 
