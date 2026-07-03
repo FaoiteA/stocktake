@@ -26431,7 +26431,7 @@ function render() {
           ${p.name && p.name !== p.sku ? `<span class="part-desc">${esc(p.name)}</span>` : ''}
           ${p.location ? `<span class="part-loc">📍 ${esc(p.location)}</span>` : ''}
           ${p.area ? `<span class="part-loc" style="background:rgba(168,85,247,0.15);border-color:rgba(168,85,247,0.3);color:#d8b4fe;">${esc(p.area)}</span>` : ''}
-          ${p.cost ? `<span class="part-cost">${fmt(val)}</span>` : ''}
+          ${p.cost ? `<span class="part-cost">€${Number(p.cost).toFixed(2)}</span><span class="part-cost">${fmt(val)}</span>` : ''}
           ${(window.viewMode !== 'session' && p.last_count !== null && p.last_count !== undefined) ? `<span class="part-prev" title="Quantity at last stock take">Prev: ${p.last_count}</span>` : ''}
           ${p.superseded_by ? `<span class="part-superseded" title="Superseded by ${esc(p.superseded_by)}">↪️ ${esc(p.superseded_by)}</span>` : ''}
         </div>
@@ -26727,6 +26727,7 @@ function renderPriceResults(dmsCount, matchCount, mismatches, notInApp, notInDms
   r += '<div class="vstat" style="flex:1;min-width:70px;"><div class="vstat-lbl">Diff</div><div class="vstat-val red">' + mismatches.length + '</div></div>';
   r += '<div class="vstat" style="flex:1;min-width:70px;"><div class="vstat-lbl">Not in App</div><div class="vstat-val amber">' + notInApp.length + '</div></div>';
   r += '</div>';
+  r += '<input type="text" id="pc-search" placeholder="Search by part no or location…" oninput="filterPriceResults(this.value)" style="width:100%;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:13px;outline:none;margin-bottom:8px;box-sizing:border-box;">';
   r += '<div class="pc-counter" id="pc-counter">' + pending + ' of ' + mismatches.length + ' to review</div>';
   r += '<div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap;">';
   r += '<button class="tab active" onclick="showPriceTab(this,\'mismatches\')">Price Diff (' + mismatches.length + ')</button>';
@@ -26739,12 +26740,17 @@ function renderPriceResults(dmsCount, matchCount, mismatches, notInApp, notInDms
     var diffStr = (m.diff > 0 ? '+' : '') + m.diff.toFixed(2);
     var diffColor = m.diff > 0 ? 'red' : 'green';
     var reviewed = m.status ? ' reviewed' : '';
-    r += '<div class="pc-row' + reviewed + '" id="pcrow-' + i + '">';
+    var searchData = (m.sku + ' ' + (m.name||'') + ' ' + (mp?mp.location||'':'') + ' ' + (mp?mp.area||'':'')).toLowerCase();
+    r += '<div class="pc-row' + reviewed + '" id="pcrow-' + i + '" data-search="' + esc(searchData) + '">';
+    var mp = items.find(function(x){return x.id===m.id;});
     r += '<div style="font-weight:600;">' + esc(m.sku);
     if (m.status === 'accepted') r += '<span class="pc-badge pc-accepted">Accepted</span>';
     if (m.status === 'kept') r += '<span class="pc-badge pc-kept">Kept</span>';
     r += '</div>';
     r += '<div style="color:var(--text2);">' + esc(m.name || '') + '</div>';
+    if (mp && mp.dead_stock) r += '<span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;background:rgba(239,68,68,0.15);color:#f87171;margin-left:6px;">Dead Stock</span>';
+    if (mp && mp.paid_claimed) r += '<span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;background:rgba(59,130,246,0.15);color:#60a5fa;margin-left:6px;">Paid</span>';
+    if (mp) r += '<div style="color:var(--text3);font-size:11px;">' + (mp.location ? '📍 ' + esc(mp.location) : '') + (mp.area ? ' • ' + esc(mp.area) : '') + '</div>';
     r += '<div style="display:flex;gap:16px;margin-top:4px;">';
     r += '<span>App: <b>' + fmt(m.appCost) + '</b></span>';
     r += '<span>DMS: <b>' + fmt(m.dmsCost) + '</b></span>';
@@ -26789,19 +26795,25 @@ async function pcAccept(idx) {
     await saveSessionSnapshot();
   } else {
     showSync();
-    await sb.from('stock_items').update({ cost: m.dmsCost }).eq('id', m.id);
+    await sb.from('stock_items').update({ cost: m.dmsCost, counted_qty: p.counted_qty, last_counted: p.last_counted }).eq('id', m.id);
     hideSync();
   }
   updatePcRow(idx);
   render();
+  p.counted_qty = p.qty;
+  p.system_counted = true;
+  p.last_counted = new Date().toISOString();
   toast(m.sku + ' updated to ' + fmt(m.dmsCost));
 }
 
-function pcKeep(idx) {
+async function pcKeep(idx) {
   var m = window._pcMismatches[idx];
   if (!m || m.status) return;
   m.status = 'kept';
   updatePcRow(idx);
+  var kp = items.find(function(x){return x.id===m.id;});
+  if (kp) { kp.counted_qty = kp.qty; kp.system_counted = true; kp.last_counted = new Date().toISOString(); }
+  if (window.viewMode === 'session' && activeSessionId) { await saveSessionSnapshot(); } else { showSync(); await sb.from('stock_items').update({ counted_qty: kp.counted_qty, last_counted: kp.last_counted }).eq('id', m.id); hideSync(); }
   toast(m.sku + ' kept at ' + fmt(m.appCost));
 }
 
@@ -26820,6 +26832,14 @@ function updatePcRow(idx) {
   var pending = window._pcMismatches.filter(function(x) { return !x.status; }).length;
   var counter = document.getElementById('pc-counter');
   if (counter) counter.textContent = pending + ' of ' + window._pcMismatches.length + ' to review';
+}
+
+function filterPriceResults(q) {
+  q = q.toLowerCase().trim();
+  document.querySelectorAll('#ptab-mismatches .pc-row').forEach(function(row) {
+    var data = row.getAttribute('data-search') || '';
+    row.style.display = (!q || data.includes(q)) ? '' : 'none';
+  });
 }
 
 function showPriceTab(btn, tab) {
