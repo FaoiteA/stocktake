@@ -304,6 +304,16 @@ td{color:var(--text2);}
 .sys-chk{display:inline-flex;align-items:center;gap:3px;cursor:pointer;margin-right:8px;font-size:11px;font-weight:700;color:var(--text3);user-select:none;}
 .sys-chk input{width:16px;height:16px;accent-color:#29dcff;cursor:pointer;margin:0;}
 .sys-chk input:checked+span{color:#29dcff;}
+.pc-row{padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;}
+.pc-row.reviewed{opacity:0.4;}
+.pc-btns{display:flex;gap:6px;margin-top:6px;}
+.pc-btn{padding:4px 10px;border-radius:6px;border:none;font-size:12px;font-weight:600;cursor:pointer;}
+.pc-accept{background:rgba(41,220,255,0.15);color:#29dcff;}
+.pc-keep{background:rgba(255,255,255,0.08);color:var(--text2);}
+.pc-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;margin-left:8px;}
+.pc-accepted{background:rgba(41,220,255,0.15);color:#29dcff;}
+.pc-kept{background:rgba(255,255,255,0.08);color:var(--text3);}
+.pc-counter{font-size:13px;color:var(--text2);margin-bottom:8px;}
 </style>
 </head>
 <body>
@@ -450,6 +460,7 @@ CREATE TRIGGER stock_items_updated_at
       <button class="icon-btn" onclick="resetAllQty()" title="Reset all quantities to zero">🔄</button>
       <button class="icon-btn" onclick="openPickLists()" title="Pick lists">🧺</button>
       <button class="icon-btn" onclick="doBackup()" title="Backup all data">💾</button>
+      <button class="icon-btn" onclick="openPriceCheck()" title="Price Check">💱</button>
       <button class="icon-btn" onclick="doLogout()" title="Sign out">⏻</button>
     </div>
   </div>
@@ -25656,6 +25667,19 @@ CREATE TRIGGER stock_items_updated_at
   </div>
 </div>
 
+<!-- PRICE CHECK MODAL -->
+<div id="price-modal" class="hidden" onclick="closePriceCheck()">
+  <div class="loc-panel" style="max-width:650px;max-height:85vh;overflow-y:auto;" onclick="event.stopPropagation()">
+    <div class="loc-panel-title">Price Check — DMS Compare</div>
+    <div id="price-upload" style="padding:16px;">
+      <p style="color:var(--text2);font-size:13px;margin:0 0 12px;">Upload your Autoview CSV to compare cost prices.</p>
+      <input type="file" id="dms-file" accept=".csv" onchange="runPriceCheck(this.files[0])" style="display:none;">
+      <button class="btn btn-primary" style="width:100%;" onclick="document.getElementById('dms-file').click()">Choose Autoview CSV</button>
+    </div>
+    <div id="price-results" style="display:none;padding:0 16px 16px;"></div>
+  </div>
+</div>
+
 <!-- LOCATION FILTER MODAL -->
 <div id="loc-modal" class="hidden" onclick="closeLocModal()">
   <div class="loc-panel" onclick="event.stopPropagation()">
@@ -26611,6 +26635,211 @@ async function adjQty(id, delta, reason) {
   const { error } = await sb.from('stock_items').update({ qty: newQty, change_log: log }).eq('id', id);
   hideSync();
   if (error) toast('Sync error: ' + error.message);
+}
+
+function openPriceCheck() {
+  document.getElementById('price-modal').classList.remove('hidden');
+  document.getElementById('price-results').style.display = 'none';
+  document.getElementById('price-upload').style.display = '';
+  document.getElementById('dms-file').value = '';
+}
+function closePriceCheck() { document.getElementById('price-modal').classList.add('hidden'); }
+
+function parseCsvLine(line) {
+  var result = [], current = '', inQ = false;
+  for (var i = 0; i < line.length; i++) {
+    var ch = line[i];
+    if (inQ) {
+      if (ch === '"' && line[i+1] === '"') { current += '"'; i++; }
+      else if (ch === '"') inQ = false;
+      else current += ch;
+    } else {
+      if (ch === '"') inQ = true;
+      else if (ch === ',') { result.push(current.trim()); current = ''; }
+      else current += ch;
+    }
+  }
+  result.push(current.trim());
+  return result;
+}
+
+function parseDmsCsv(text) {
+  var lines = text.split(/\r?\n/);
+  if (lines.length < 2) return [];
+  var headers = parseCsvLine(lines[0]).map(function(h) { return h.toLowerCase(); });
+  var codeIdx = headers.indexOf('code');
+  var costIdx = headers.indexOf('cost');
+  if (codeIdx === -1 || costIdx === -1) return [];
+  var parts = [];
+  for (var i = 1; i < lines.length; i++) {
+    if (!lines[i].trim()) continue;
+    var cols = parseCsvLine(lines[i]);
+    var code = (cols[codeIdx] || '').trim();
+    var cost = parseFloat(cols[costIdx]);
+    if (!code || isNaN(cost)) continue;
+    parts.push({ code: code, cost: cost });
+  }
+  return parts;
+}
+
+window._pcMismatches = [];
+window._pcReviewed = 0;
+
+function runPriceCheck(file) {
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var dmsParts = parseDmsCsv(e.target.result);
+    if (dmsParts.length === 0) { toast('Could not parse any parts from CSV'); return; }
+    var dmsMap = {};
+    dmsParts.forEach(function(d) { dmsMap[d.code.toUpperCase()] = d; });
+    var mismatches = [], matched = [], notInDms = [];
+    items.forEach(function(p) {
+      var key = (p.sku || '').toUpperCase();
+      var dms = dmsMap[key];
+      if (!dms) { notInDms.push(p); return; }
+      dms._matched = true;
+      var appCost = Math.round((p.cost || 0) * 100);
+      var dmsCost = Math.round(dms.cost * 100);
+      if (appCost !== dmsCost) {
+        mismatches.push({ id: p.id, sku: p.sku, name: p.name, appCost: p.cost || 0, dmsCost: dms.cost, diff: dms.cost - (p.cost || 0), status: null });
+      } else { matched.push(p); }
+    });
+    var notInApp = dmsParts.filter(function(d) { return !d._matched; });
+    mismatches.sort(function(a, b) { return Math.abs(b.diff) - Math.abs(a.diff); });
+    window._pcMismatches = mismatches;
+    window._pcReviewed = 0;
+    renderPriceResults(dmsParts.length, matched.length, mismatches, notInApp, notInDms);
+    toast(mismatches.length + ' price difference(s) found');
+  };
+  reader.readAsText(file);
+}
+
+function renderPriceResults(dmsCount, matchCount, mismatches, notInApp, notInDms) {
+  var pending = mismatches.filter(function(m) { return !m.status; }).length;
+  var r = '<div>';
+  r += '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px;">';
+  r += '<div class="vstat" style="flex:1;min-width:70px;"><div class="vstat-lbl">DMS</div><div class="vstat-val">' + dmsCount + '</div></div>';
+  r += '<div class="vstat" style="flex:1;min-width:70px;"><div class="vstat-lbl">Match</div><div class="vstat-val green">' + matchCount + '</div></div>';
+  r += '<div class="vstat" style="flex:1;min-width:70px;"><div class="vstat-lbl">Diff</div><div class="vstat-val red">' + mismatches.length + '</div></div>';
+  r += '<div class="vstat" style="flex:1;min-width:70px;"><div class="vstat-lbl">Not in App</div><div class="vstat-val amber">' + notInApp.length + '</div></div>';
+  r += '</div>';
+  r += '<div class="pc-counter" id="pc-counter">' + pending + ' of ' + mismatches.length + ' to review</div>';
+  r += '<div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap;">';
+  r += '<button class="tab active" onclick="showPriceTab(this,\'mismatches\')">Price Diff (' + mismatches.length + ')</button>';
+  r += '<button class="tab" onclick="showPriceTab(this,\'notinapp\')">Not in App (' + notInApp.length + ')</button>';
+  r += '<button class="tab" onclick="showPriceTab(this,\'notindms\')">Not in DMS (' + notInDms.length + ')</button>';
+  r += '</div>';
+  r += '<div id="ptab-mismatches">';
+  if (mismatches.length === 0) r += '<p style="color:var(--text3);font-size:13px;">All prices match!</p>';
+  mismatches.forEach(function(m, i) {
+    var diffStr = (m.diff > 0 ? '+' : '') + m.diff.toFixed(2);
+    var diffColor = m.diff > 0 ? 'red' : 'green';
+    var reviewed = m.status ? ' reviewed' : '';
+    r += '<div class="pc-row' + reviewed + '" id="pcrow-' + i + '">';
+    r += '<div style="font-weight:600;">' + esc(m.sku);
+    if (m.status === 'accepted') r += '<span class="pc-badge pc-accepted">Accepted</span>';
+    if (m.status === 'kept') r += '<span class="pc-badge pc-kept">Kept</span>';
+    r += '</div>';
+    r += '<div style="color:var(--text2);">' + esc(m.name || '') + '</div>';
+    r += '<div style="display:flex;gap:16px;margin-top:4px;">';
+    r += '<span>App: <b>' + fmt(m.appCost) + '</b></span>';
+    r += '<span>DMS: <b>' + fmt(m.dmsCost) + '</b></span>';
+    r += '<span style="color:var(--' + diffColor + ');">' + diffStr + '</span>';
+    r += '</div>';
+    if (!m.status) {
+      r += '<div class="pc-btns">';
+      r += '<button class="pc-btn pc-accept" onclick="pcAccept(' + i + ')">Accept DMS Price</button>';
+      r += '<button class="pc-btn pc-keep" onclick="pcKeep(' + i + ')">Keep</button>';
+      r += '</div>';
+    }
+    r += '</div>';
+  });
+  r += '</div>';
+  r += '<div id="ptab-notinapp" style="display:none;">';
+  notInApp.forEach(function(d) {
+    r += '<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;">' + esc(d.code) + ' \u2014 ' + fmt(d.cost) + '</div>';
+  });
+  r += '</div>';
+  r += '<div id="ptab-notindms" style="display:none;">';
+  notInDms.forEach(function(p) {
+    r += '<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;">' + esc(p.sku) + ' \u2014 ' + fmt(p.cost || 0) + '</div>';
+  });
+  r += '</div>';
+  if (mismatches.length > 0) {
+    r += '<button class="btn btn-primary" style="width:100%;margin-top:12px;" onclick="exportPriceDiffs()">Export Mismatches CSV</button>';
+  }
+  r += '</div>';
+  document.getElementById('price-upload').style.display = 'none';
+  document.getElementById('price-results').style.display = '';
+  document.getElementById('price-results').innerHTML = r;
+}
+
+async function pcAccept(idx) {
+  var m = window._pcMismatches[idx];
+  if (!m || m.status) return;
+  var p = items.find(function(x) { return x.id === m.id; });
+  if (!p) { toast('Part not found'); return; }
+  p.cost = m.dmsCost;
+  m.status = 'accepted';
+  if (window.viewMode === 'session' && activeSessionId) {
+    await saveSessionSnapshot();
+  } else {
+    showSync();
+    await sb.from('stock_items').update({ cost: m.dmsCost }).eq('id', m.id);
+    hideSync();
+  }
+  updatePcRow(idx);
+  render();
+  toast(m.sku + ' updated to ' + fmt(m.dmsCost));
+}
+
+function pcKeep(idx) {
+  var m = window._pcMismatches[idx];
+  if (!m || m.status) return;
+  m.status = 'kept';
+  updatePcRow(idx);
+  toast(m.sku + ' kept at ' + fmt(m.appCost));
+}
+
+function updatePcRow(idx) {
+  var m = window._pcMismatches[idx];
+  var row = document.getElementById('pcrow-' + idx);
+  if (!row) return;
+  row.classList.add('reviewed');
+  var btns = row.querySelector('.pc-btns');
+  if (btns) btns.remove();
+  var nameDiv = row.querySelector('div:first-child');
+  if (nameDiv) {
+    if (m.status === 'accepted') nameDiv.innerHTML = '<b>' + esc(m.sku) + '</b><span class="pc-badge pc-accepted">Accepted</span>';
+    if (m.status === 'kept') nameDiv.innerHTML = '<b>' + esc(m.sku) + '</b><span class="pc-badge pc-kept">Kept</span>';
+  }
+  var pending = window._pcMismatches.filter(function(x) { return !x.status; }).length;
+  var counter = document.getElementById('pc-counter');
+  if (counter) counter.textContent = pending + ' of ' + window._pcMismatches.length + ' to review';
+}
+
+function showPriceTab(btn, tab) {
+  document.querySelectorAll('#price-results .tab').forEach(function(t) { t.classList.remove('active'); });
+  btn.classList.add('active');
+  ['mismatches','notinapp','notindms'].forEach(function(t) {
+    var el = document.getElementById('ptab-' + t);
+    if (el) el.style.display = t === tab ? '' : 'none';
+  });
+}
+
+function exportPriceDiffs() {
+  var m = window._pcMismatches || [];
+  if (!m.length) return;
+  var csv = 'SKU,Description,App Cost,DMS Cost,Difference,Decision\n';
+  m.forEach(function(row) {
+    csv += '"' + row.sku + '","' + (row.name||'').replace(/"/g,'""') + '",' + row.appCost.toFixed(2) + ',' + row.dmsCost.toFixed(2) + ',' + row.diff.toFixed(2) + ',' + (row.status||'pending') + '\n';
+  });
+  var blob = new Blob([csv], {type:'text/csv'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'price-check-' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
 }
 
 function displayCounted(p) { return p.system_counted ? 'S' : p.counted_qty; }
