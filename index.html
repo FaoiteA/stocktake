@@ -138,7 +138,8 @@ body{font-family:'DM Sans',sans-serif;color:var(--text);display:flex;flex-direct
 .part-desc{font-size:11px;color:var(--text2);}
 .part-sku{font-family:'DM Mono',monospace;font-size:10px;color:var(--text2);}
 .part-loc{background:var(--accent-bg);border:1px solid rgba(59,130,246,0.3);border-radius:6px;padding:3px 9px;font-size:13px;font-weight:700;color:#93c5fd;}
-.part-cost{font-size:11px;color:var(--text3);}
+.part-cost{font-size:12px;color:var(--text2);margin-right:10px;}
+.cost-lbl{font-size:10px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:0.3px;}
 .part-prev{font-size:10px;color:var(--text3);background:var(--surface2);border-radius:5px;padding:1px 6px;opacity:0.8;font-family:'DM Mono',monospace;}
 .part-superseded{font-size:10px;color:#fca5a5;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.35);border-radius:5px;padding:1px 6px;font-family:'DM Mono',monospace;}
 .part-right{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;}
@@ -26431,7 +26432,7 @@ function render() {
           ${p.name && p.name !== p.sku ? `<span class="part-desc">${esc(p.name)}</span>` : ''}
           ${p.location ? `<span class="part-loc">📍 ${esc(p.location)}</span>` : ''}
           ${p.area ? `<span class="part-loc" style="background:rgba(168,85,247,0.15);border-color:rgba(168,85,247,0.3);color:#d8b4fe;">${esc(p.area)}</span>` : ''}
-          ${p.cost ? `<span class="part-cost">€${Number(p.cost).toFixed(2)}</span><span class="part-cost">${fmt(val)}</span>` : ''}
+          ${p.cost ? `<span class="part-cost"><span class="cost-lbl">Cost:</span> €${Number(p.cost).toFixed(2)}</span><span class="part-cost"><span class="cost-lbl">Total:</span> ${fmt(val)}</span>` : ''}
           ${(window.viewMode !== 'session' && p.last_count !== null && p.last_count !== undefined) ? `<span class="part-prev" title="Quantity at last stock take">Prev: ${p.last_count}</span>` : ''}
           ${p.superseded_by ? `<span class="part-superseded" title="Superseded by ${esc(p.superseded_by)}">↪️ ${esc(p.superseded_by)}</span>` : ''}
         </div>
