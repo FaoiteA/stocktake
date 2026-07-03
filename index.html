@@ -25673,7 +25673,7 @@ CREATE TRIGGER stock_items_updated_at
 <!-- PRICE CHECK MODAL -->
 <div id="price-modal" class="hidden" onclick="closePriceCheck()">
   <div class="loc-panel" style="max-width:650px;max-height:85vh;overflow-y:auto;" onclick="event.stopPropagation()">
-    <div class="loc-panel-title">Price Check — DMS Compare</div>
+    <div class="loc-panel-title" style="display:flex;justify-content:space-between;align-items:center;">Price Check — DMS Compare<span onclick="closePriceCheck()" style="cursor:pointer;font-size:18px;color:var(--text3);padding:4px 8px;">✕</span></div>
     <div id="price-upload" style="padding:16px;">
       <p style="color:var(--text2);font-size:13px;margin:0 0 12px;">Upload your Autoview CSV to compare cost prices.</p>
       <input type="file" id="dms-file" accept=".csv" onchange="runPriceCheck(this.files[0])" style="display:none;">
