@@ -320,6 +320,15 @@ td{color:var(--text2);}
 .pc-counter{font-size:13px;color:var(--text2);margin-bottom:8px;}
 
 
+.prog-bar{width:100%;height:6px;background:var(--border);border-radius:3px;margin-top:4px;overflow:hidden;}
+.prog-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,#4ade80,#29dcff);transition:width 0.3s;}
+.prog-loc{padding:10px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;}
+.prog-loc-bar{flex:1;height:8px;background:var(--border);border-radius:4px;overflow:hidden;}
+.prog-loc-fill{height:100%;border-radius:4px;background:linear-gradient(90deg,#4ade80,#29dcff);}
+.prog-loc-name{min-width:60px;font-weight:600;font-size:13px;}
+.prog-loc-pct{min-width:45px;text-align:right;font-size:12px;color:var(--text2);}
+.prog-loc-count{min-width:55px;text-align:right;font-size:11px;color:var(--text3);}
+.prog-done{color:#4ade80 !important;}
 </style>
 </head>
 <body>
@@ -478,7 +487,7 @@ CREATE TRIGGER stock_items_updated_at
     <div class="vstat" title="Net Stock Value = Total Stock - Dead Stock - Paid/Claimed - Wrote Off - Unpaid Warranty"><div class="vstat-lbl">Stock Value <span style="opacity:0.5;font-size:10px;">ⓘ</span></div><div class="vstat-val green" id="vs-value">€2,431</div></div>
     <div class="vstat"><div class="vstat-lbl">Out of Stock</div><div class="vstat-val red" id="vs-out">1339</div></div>
     <div class="vstat" style="display:none" id="vs-low-wrap"><div class="vstat-lbl">Low Stock</div><div class="vstat-val amber" id="vs-low">0</div></div>
-    <div class="vstat"><div class="vstat-lbl">Counted</div><div class="vstat-val amber" id="vs-counted">0%</div></div>
+    <div class="vstat" onclick="openProgress()" style="cursor:pointer;" title="View progress by location"><div class="vstat-lbl">Counted</div><div class="vstat-val amber" id="vs-counted">0%</div><div class="prog-bar"><div class="prog-fill" id="vs-prog" style="width:0%"></div></div></div>
     <div class="vstat"><div class="vstat-lbl">Dead Stock</div><div class="vstat-val red" id="vs-dead">€0</div></div>
     <div class="vstat"><div class="vstat-lbl">Paid/Claimed</div><div class="vstat-val green" id="vs-paid">€0</div></div>
     <div class="vstat" onclick="openManualStat('wrote')" style="cursor:pointer" title="Click to edit"><div class="vstat-lbl">Wrote Off ✏️</div><div class="vstat-val amber" id="vs-wrote">€0</div></div>
@@ -25673,6 +25682,16 @@ CREATE TRIGGER stock_items_updated_at
   </div>
 </div>
 
+<!-- PROGRESS MODAL -->
+<div id="prog-modal" class="hidden" onclick="closeProgress()" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:150;display:flex;align-items:center;justify-content:center;">
+  <div class="loc-panel" style="border-radius:20px;max-height:85vh;width:calc(100% - 32px);max-width:500px;overflow-y:auto;" onclick="event.stopPropagation()">
+    <div class="loc-panel-title" style="display:flex;justify-content:space-between;align-items:center;">Stock Take Progress<span onclick="closeProgress()" style="cursor:pointer;font-size:18px;color:var(--text3);padding:4px 8px;">✕</span></div>
+    <div id="prog-summary" style="padding:0 18px 8px;"></div>
+    <div id="prog-list"></div>
+  </div>
+</div>
+<style>#prog-modal.hidden{display:none;}</style>
+
 <!-- PRICE CHECK MODAL -->
 <div id="price-modal" class="hidden" onclick="closePriceCheck()">
   <div class="loc-panel" style="max-width:650px;max-height:85vh;overflow-y:auto;" onclick="event.stopPropagation()">
@@ -26384,6 +26403,8 @@ function render() {
   const lowCount = items.filter(p => p.qty > 0 && p.min_qty > 0 && p.qty <= p.min_qty).length;
   document.getElementById('vs-low').textContent = lowCount;
   document.getElementById('vs-counted').textContent = pct + '%';
+  var progEl = document.getElementById('vs-prog'); if (progEl) progEl.style.width = pct + '%';
+  var countedEl = document.getElementById('vs-counted'); if (countedEl) countedEl.className = 'vstat-val ' + (pct >= 100 ? 'green' : 'amber');
   document.getElementById('vs-dead').textContent = fmt(deadVal);
   document.getElementById('vs-paid').textContent = fmt(paidVal);
   document.getElementById('vs-wrote').textContent = fmt(wroteVal);
@@ -26888,6 +26909,44 @@ async function quickCount(id) {
     hideSync();
   }
   render();
+}
+
+function openProgress() {
+  document.getElementById('prog-modal').classList.remove('hidden');
+  renderProgress();
+}
+function closeProgress() { document.getElementById('prog-modal').classList.add('hidden'); }
+
+function renderProgress() {
+  var total = items.length;
+  var counted = items.filter(function(p) { return p.counted_qty !== null; }).length;
+  var pct = total ? Math.round(counted / total * 100) : 0;
+  document.getElementById('prog-summary').innerHTML = '<div style="display:flex;gap:16px;margin-bottom:4px;"><div><span style="font-size:28px;font-weight:700;color:' + (pct >= 100 ? '#4ade80' : 'var(--text)') + ';">' + pct + '%</span></div><div style="font-size:13px;color:var(--text2);padding-top:6px;">' + counted + ' of ' + total + ' parts<br>' + (total - counted) + ' remaining</div></div><div class="prog-bar" style="height:10px;margin:8px 0;"><div class="prog-fill" style="width:' + pct + '%;height:100%;"></div></div>';
+  var locs = {};
+  items.forEach(function(p) {
+    var loc = p.location || p.area || 'No location';
+    if (!locs[loc]) locs[loc] = { total: 0, counted: 0 };
+    locs[loc].total++;
+    if (p.counted_qty !== null) locs[loc].counted++;
+  });
+  var sorted = Object.keys(locs).sort(function(a, b) {
+    var pa = locs[a].total ? locs[a].counted / locs[a].total : 0;
+    var pb = locs[b].total ? locs[b].counted / locs[b].total : 0;
+    return pa - pb;
+  });
+  var h = '';
+  sorted.forEach(function(loc) {
+    var d = locs[loc];
+    var lp = d.total ? Math.round(d.counted / d.total * 100) : 0;
+    var done = lp >= 100;
+    h += '<div class="prog-loc">';
+    h += '<span class="prog-loc-name' + (done ? ' prog-done' : '') + '">' + esc(loc) + '</span>';
+    h += '<div class="prog-loc-bar"><div class="prog-loc-fill" style="width:' + lp + '%"></div></div>';
+    h += '<span class="prog-loc-pct' + (done ? ' prog-done' : '') + '">' + lp + '%</span>';
+    h += '<span class="prog-loc-count">' + d.counted + '/' + d.total + '</span>';
+    h += '</div>';
+  });
+  document.getElementById('prog-list').innerHTML = h;
 }
 
 function displayCounted(p) { return p.system_counted ? 'S' : p.counted_qty; }
