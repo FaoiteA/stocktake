@@ -318,8 +318,8 @@ td{color:var(--text2);}
 .pc-accepted{background:rgba(41,220,255,0.15);color:#29dcff;}
 .pc-kept{background:rgba(255,255,255,0.08);color:var(--text3);}
 .pc-counter{font-size:13px;color:var(--text2);margin-bottom:8px;}
-.qc-btn{width:28px;height:28px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:16px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;margin-right:6px;flex-shrink:0;}
-.qc-btn.qc-done{background:rgba(74,222,128,0.15);border-color:rgba(74,222,128,0.3);color:#4ade80;}
+.qc-btn{width:36px;height:36px;border-radius:8px;border:2px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.05);color:var(--text3);font-size:20px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;margin-right:8px;flex-shrink:0;}
+.qc-btn.qc-done{background:rgba(74,222,128,0.25);border-color:#4ade80;color:#4ade80;}
 </style>
 </head>
 <body>
@@ -26442,7 +26442,7 @@ function render() {
       <div class="part-right">
         ${badge}
         ${window.viewMode==='session'?`<label class="sys-chk" title="System count" onclick="event.stopPropagation()"><input type="checkbox" ${p.system_counted?'checked':''} onchange="toggleSystemCount('${p.id}',this.checked)"/><span>S</span></label>`:''}
-        ${window.viewMode==='session'&&!p.system_counted?`<button class="qc-btn ${p.counted_qty!==null?'qc-done':''}" title="${p.counted_qty!==null?'Counted':'Mark counted'}" onclick="event.stopPropagation();quickCount('${p.id}')">${p.counted_qty!==null?'\u2713':'\u2713'}</button>`:''}
+        ${window.viewMode==='session'?`<button class="qc-btn ${p.counted_qty!==null?'qc-done':''}" title="${p.counted_qty!==null?'Counted':'Mark counted'}" onclick="event.stopPropagation();quickCount('${p.id}')">${p.counted_qty!==null?'\u2713':'\u2713'}</button>`:''}
 
         <div class="inline-qty">
           <button class="inline-btn" onclick="event.stopPropagation();inlineAdj('${p.id}',-1)">−</button>
