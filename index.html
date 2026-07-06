@@ -318,8 +318,8 @@ td{color:var(--text2);}
 .pc-accepted{background:rgba(41,220,255,0.15);color:#29dcff;}
 .pc-kept{background:rgba(255,255,255,0.08);color:var(--text3);}
 .pc-counter{font-size:13px;color:var(--text2);margin-bottom:8px;}
-.qc-btn{width:24px;height:24px;border-radius:5px;border:1px solid rgba(255,255,255,0.15);background:transparent;color:var(--text3);font-size:14px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;margin-right:6px;flex-shrink:0;}
-.qc-btn.qc-done{background:rgba(74,222,128,0.25);border-color:#4ade80;color:#4ade80;}
+
+
 </style>
 </head>
 <body>
@@ -26441,9 +26441,9 @@ function render() {
       </div>
       <div class="part-right">
         ${badge}
+        ${window.viewMode==='session'?`<label class="sys-chk" title="Mark counted" onclick="event.stopPropagation()"><input type="checkbox" ${p.counted_qty!==null&&!p.system_counted?'checked':''} onchange="quickCount('${p.id}')"/><span>Count</span></label>`:''}
         ${window.viewMode==='session'?`<label class="sys-chk" title="System count" onclick="event.stopPropagation()"><input type="checkbox" ${p.system_counted?'checked':''} onchange="toggleSystemCount('${p.id}',this.checked)"/><span>S</span></label>`:''}
-        ${window.viewMode==='session'?`<button class="qc-btn ${p.counted_qty!==null?'qc-done':''}" title="${p.counted_qty!==null?'Counted':'Mark counted'}" onclick="event.stopPropagation();quickCount('${p.id}')">${p.counted_qty!==null?'\u2713':'\u2713'}</button>`:''}
-
+        
         <div class="inline-qty">
           <button class="inline-btn" onclick="event.stopPropagation();inlineAdj('${p.id}',-1)">−</button>
           <span class="part-qty" id="iqty-${p.id}" onclick="event.stopPropagation();editQtyInline('${p.id}')" style="cursor:pointer;">${p.qty}</span>
@@ -26873,12 +26873,13 @@ function exportPriceDiffs() {
 async function quickCount(id) {
   var p = items.find(function(x) { return x.id === id; });
   if (!p) return;
-  if (p.counted_qty !== null) {
+  if (p.counted_qty !== null && !p.system_counted) {
     p.counted_qty = null;
     p.last_counted = null;
   } else {
     p.counted_qty = p.qty;
     p.last_counted = new Date().toISOString();
+    p.system_counted = false;
   }
   if (window.viewMode === 'session' && activeSessionId) {
     await saveSessionSnapshot();
