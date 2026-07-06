@@ -26441,7 +26441,7 @@ function render() {
       </div>
       <div class="part-right">
         ${badge}
-        ${window.viewMode==='session'?`<label class="sys-chk" title="Mark counted" onclick="event.stopPropagation()"><input type="checkbox" ${p.counted_qty!==null&&!p.system_counted?'checked':''} onchange="quickCount('${p.id}')"/><span>Count</span></label>`:''}
+        ${window.viewMode==='session'?`<label class="sys-chk" title="Mark counted" onclick="event.stopPropagation()"><input type="checkbox" ${p.manually_counted?'checked':''} onchange="quickCount('${p.id}')"/><span>Count</span></label>`:''}
         ${window.viewMode==='session'?`<label class="sys-chk" title="System count" onclick="event.stopPropagation()"><input type="checkbox" ${p.system_counted?'checked':''} onchange="toggleSystemCount('${p.id}',this.checked)"/><span>S</span></label>`:''}
         
         <div class="inline-qty">
@@ -26873,13 +26873,13 @@ function exportPriceDiffs() {
 async function quickCount(id) {
   var p = items.find(function(x) { return x.id === id; });
   if (!p) return;
-  if (p.counted_qty !== null && !p.system_counted) {
-    p.counted_qty = null;
-    p.last_counted = null;
-  } else {
+  p.manually_counted = !p.manually_counted;
+  if (p.manually_counted || p.system_counted) {
     p.counted_qty = p.qty;
     p.last_counted = new Date().toISOString();
-    p.system_counted = false;
+  } else {
+    p.counted_qty = null;
+    p.last_counted = null;
   }
   if (window.viewMode === 'session' && activeSessionId) {
     await saveSessionSnapshot();
@@ -26897,7 +26897,7 @@ async function toggleSystemCount(id, checked) {
   const p = items.find(x => x.id === id);
   if (!p) return;
   p.system_counted = checked;
-  if (checked) {
+  if (checked || p.manually_counted) {
     p.counted_qty = p.qty;
     p.last_counted = new Date().toISOString();
   } else {
@@ -28076,7 +28076,7 @@ async function setActiveSession(id, name) {
     await sb.from('app_settings').upsert({ key: 'active_session_id', value: id });
     const s = sessions.find(x => x.id === id);
     if (s && s.snapshot && s.snapshot.length) {
-      items = s.snapshot.map(p => ({...p, change_log: p.change_log||[], min_qty: p.min_qty||0, counted_qty: p.counted_qty||null, system_counted: p.system_counted||false, dead_stock: p.dead_stock||false, wrote_off: p.wrote_off||false, paid_claimed: p.paid_claimed||false}));
+      items = s.snapshot.map(p => ({...p, change_log: p.change_log||[], min_qty: p.min_qty||0, counted_qty: p.counted_qty||null, system_counted: p.system_counted||false, manually_counted: p.manually_counted||false, dead_stock: p.dead_stock||false, wrote_off: p.wrote_off||false, paid_claimed: p.paid_claimed||false}));
     }
     window.viewMode = 'session';
     updateTopbarTitle();
@@ -28119,7 +28119,7 @@ function updateActiveSessionBar() {
     const s = sessions.find(x => x.id === activeSessionId);
     if (s) {
       if (window.viewMode === 'session') {
-        items = s.snapshot.map(p => ({...p, change_log: p.change_log||[], min_qty: p.min_qty||0, counted_qty: p.counted_qty||null, system_counted: p.system_counted||false, dead_stock: p.dead_stock||false, wrote_off: p.wrote_off||false, paid_claimed: p.paid_claimed||false}));
+        items = s.snapshot.map(p => ({...p, change_log: p.change_log||[], min_qty: p.min_qty||0, counted_qty: p.counted_qty||null, system_counted: p.system_counted||false, manually_counted: p.manually_counted||false, dead_stock: p.dead_stock||false, wrote_off: p.wrote_off||false, paid_claimed: p.paid_claimed||false}));
       }
     } else {
       activeSessionId = null;
@@ -28138,7 +28138,7 @@ async function toggleViewMode() {
     await loadItems();
   } else {
     window.viewMode = 'session';
-    items = s.snapshot.map(p => ({...p, change_log: p.change_log||[], min_qty: p.min_qty||0, counted_qty: p.counted_qty||null, system_counted: p.system_counted||false, dead_stock: p.dead_stock||false, wrote_off: p.wrote_off||false, paid_claimed: p.paid_claimed||false}));
+    items = s.snapshot.map(p => ({...p, change_log: p.change_log||[], min_qty: p.min_qty||0, counted_qty: p.counted_qty||null, system_counted: p.system_counted||false, manually_counted: p.manually_counted||false, dead_stock: p.dead_stock||false, wrote_off: p.wrote_off||false, paid_claimed: p.paid_claimed||false}));
   }
   updateTopbarTitle();
   render();
@@ -28243,7 +28243,7 @@ async function saveSession() {
   const wroteVal = wroteValManual || wroteValCalc;
   const outCount = items.filter(p=>p.qty===0).length;
   // Save snapshot of current stock with quantities reset to zero for counting
-  const snapshot = items.map(p => ({ id:p.id, sku:p.sku, name:p.name, qty:0, cost:p.cost, location:p.location, area:p.area, dead_stock:p.dead_stock, wrote_off:p.wrote_off, paid_claimed:p.paid_claimed, counted_qty:null, system_counted:false, min_qty:p.min_qty||0, change_log:[] }));
+  const snapshot = items.map(p => ({ id:p.id, sku:p.sku, name:p.name, qty:0, cost:p.cost, location:p.location, area:p.area, dead_stock:p.dead_stock, wrote_off:p.wrote_off, paid_claimed:p.paid_claimed, counted_qty:null, system_counted:false, manually_counted:false, min_qty:p.min_qty||0, change_log:[] }));
   const sessionData = {
     name,
     notes: document.getElementById('ns-notes').value.trim(),
