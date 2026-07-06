@@ -25683,14 +25683,14 @@ CREATE TRIGGER stock_items_updated_at
 </div>
 
 <!-- PROGRESS MODAL -->
-<div id="prog-modal" class="hidden" onclick="closeProgress()" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:150;display:flex;align-items:center;justify-content:center;">
+<div id="prog-modal" class="hidden" onclick="closeProgress()">
   <div class="loc-panel" style="border-radius:20px;max-height:85vh;width:calc(100% - 32px);max-width:500px;overflow-y:auto;" onclick="event.stopPropagation()">
     <div class="loc-panel-title" style="display:flex;justify-content:space-between;align-items:center;">Stock Take Progress<span onclick="closeProgress()" style="cursor:pointer;font-size:18px;color:var(--text3);padding:4px 8px;">✕</span></div>
     <div id="prog-summary" style="padding:0 18px 8px;"></div>
     <div id="prog-list"></div>
   </div>
 </div>
-<style>#prog-modal.hidden{display:none;}</style>
+<style>#prog-modal{position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:150;display:flex;align-items:center;justify-content:center;}#prog-modal.hidden{display:none;}</style>
 
 <!-- PRICE CHECK MODAL -->
 <div id="price-modal" class="hidden" onclick="closePriceCheck()">
@@ -26918,8 +26918,9 @@ function openProgress() {
 function closeProgress() { document.getElementById('prog-modal').classList.add('hidden'); }
 
 function renderProgress() {
-  var total = items.length;
-  var counted = items.filter(function(p) { return p.counted_qty !== null; }).length;
+  try {
+  var total = (items||[]).length;
+  var counted = (items||[]).filter(function(p) { return p.counted_qty !== null && p.counted_qty !== undefined; }).length;
   var pct = total ? Math.round(counted / total * 100) : 0;
   document.getElementById('prog-summary').innerHTML = '<div style="display:flex;gap:16px;margin-bottom:4px;"><div><span style="font-size:28px;font-weight:700;color:' + (pct >= 100 ? '#4ade80' : 'var(--text)') + ';">' + pct + '%</span></div><div style="font-size:13px;color:var(--text2);padding-top:6px;">' + counted + ' of ' + total + ' parts<br>' + (total - counted) + ' remaining</div></div><div class="prog-bar" style="height:10px;margin:8px 0;"><div class="prog-fill" style="width:' + pct + '%;height:100%;"></div></div>';
   var locs = {};
@@ -26947,6 +26948,13 @@ function renderProgress() {
     h += '</div>';
   });
   document.getElementById('prog-list').innerHTML = h;
+  } catch (e) {
+    console.error('renderProgress error:', e);
+    var s = document.getElementById('prog-summary');
+    if (s) s.innerHTML = '<div style="padding:12px;color:#f87171;font-size:13px;">Error rendering progress: ' + (e && e.message ? e.message : e) + '</div>';
+    var l = document.getElementById('prog-list');
+    if (l) l.innerHTML = '';
+  }
 }
 
 function displayCounted(p) { return p.system_counted ? 'S' : p.counted_qty; }
