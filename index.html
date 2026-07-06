@@ -26441,9 +26441,8 @@ function render() {
       </div>
       <div class="part-right">
         ${badge}
-        ${window.viewMode==='session'?`<label class="sys-chk" title="Mark counted" onclick="event.stopPropagation()"><input type="checkbox" ${p.manually_counted?'checked':''} onchange="quickCount('${p.id}')"/><span>Count</span></label>`:''}
-        ${window.viewMode==='session'?`<label class="sys-chk" title="System count" onclick="event.stopPropagation()"><input type="checkbox" ${p.system_counted?'checked':''} onchange="toggleSystemCount('${p.id}',this.checked)"/><span>S</span></label>`:''}
-        
+        <div style="display:flex;gap:8px;align-items:center;">${window.viewMode==='session'?`<label class="sys-chk" title="Mark counted" onclick="event.stopPropagation()"><input type="checkbox" ${p.manually_counted?'checked':''} onchange="quickCount('${p.id}')"/><span>Count</span></label>`:''}
+        ${window.viewMode==='session'?`<label class="sys-chk" title="System count" onclick="event.stopPropagation()"><input type="checkbox" ${p.system_counted?'checked':''} onchange="toggleSystemCount('${p.id}',this.checked)"/><span>S</span></label>`:''}</div>        
         <div class="inline-qty">
           <button class="inline-btn" onclick="event.stopPropagation();inlineAdj('${p.id}',-1)">−</button>
           <span class="part-qty" id="iqty-${p.id}" onclick="event.stopPropagation();editQtyInline('${p.id}')" style="cursor:pointer;">${p.qty}</span>
