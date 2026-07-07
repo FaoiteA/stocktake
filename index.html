@@ -122,6 +122,18 @@ body{font-family:'DM Sans',sans-serif;color:var(--text);display:flex;flex-direct
 .filter-btn{padding:8px 12px;border-radius:9px;border:1px solid var(--border-md);background:var(--bg);color:var(--text2);font-family:inherit;font-size:12px;font-weight:500;cursor:pointer;white-space:nowrap;}
 .filter-btn.active{background:var(--accent-bg);border-color:var(--accent);color:var(--accent);}
 
+/* Location workflow bar */
+.loc-wf-bar{display:none;background:var(--accent-bg);border-bottom:1px solid rgba(59,130,246,0.2);padding:7px 12px;align-items:center;gap:10px;flex-shrink:0;font-size:12px;}
+.loc-wf-bar.show{display:flex;}
+.loc-wf-label{color:#93c5fd;font-weight:700;white-space:nowrap;}
+.loc-wf-seg{display:inline-flex;background:var(--bg);border:1px solid var(--border-md);border-radius:8px;overflow:hidden;margin-left:auto;}
+.loc-wf-seg button{background:transparent;border:none;color:var(--text2);padding:6px 10px;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;}
+.loc-wf-seg button.active{background:var(--accent);color:#fff;}
+.loc-wf-exit{background:transparent;border:none;color:var(--text3);font-size:16px;cursor:pointer;padding:4px 6px;line-height:1;}
+.loc-wf-done{padding:32px 20px;text-align:center;background:var(--green-bg);border:1px solid rgba(34,197,94,0.25);border-radius:14px;margin:16px;color:var(--green);font-weight:700;}
+.prog-loc.tappable{cursor:pointer;}
+.prog-loc.tappable:active{background:var(--surface2);}
+
 /* Scan mode bar */
 .scan-bar{display:none;background:var(--accent-bg);border-bottom:1px solid rgba(59,130,246,0.2);color:#93c5fd;font-size:12px;font-weight:500;text-align:center;padding:6px;flex-shrink:0;cursor:pointer;}
 .scan-bar.show{display:block;}
@@ -514,6 +526,15 @@ CREATE TRIGGER stock_items_updated_at
     </div>
     <button class="filter-btn" id="loc-filter-btn" onclick="openLocModal()">📍 All</button>
     <button class="filter-btn" id="qty-filter-btn" onclick="openQtyModal()">🔢 Qty</button>
+  </div>
+
+  <div class="loc-wf-bar" id="loc-wf-bar">
+    <span class="loc-wf-label" id="loc-wf-label">📍</span>
+    <div class="loc-wf-seg">
+      <button id="loc-wf-uncounted" onclick="setLocUncountedOnly(true)">Uncounted <span id="loc-wf-uc-count">0</span></button>
+      <button id="loc-wf-all" onclick="setLocUncountedOnly(false)">All <span id="loc-wf-all-count">0</span></button>
+    </div>
+    <button class="loc-wf-exit" onclick="exitLocationWorkflow()" title="Exit location workflow">✕</button>
   </div>
 
   <div class="scan-bar" id="scan-bar" onclick="toggleScanMode()">⌨️ USB scanner active — scan a barcode · tap to disable</div>
@@ -25697,9 +25718,9 @@ CREATE TRIGGER stock_items_updated_at
   <div class="loc-panel" style="max-width:650px;max-height:85vh;overflow-y:auto;" onclick="event.stopPropagation()">
     <div class="loc-panel-title" style="display:flex;justify-content:space-between;align-items:center;">Price Check — DMS Compare<span onclick="closePriceCheck()" style="cursor:pointer;font-size:18px;color:var(--text3);padding:4px 8px;">✕</span></div>
     <div id="price-upload" style="padding:16px;">
-      <p style="color:var(--text2);font-size:13px;margin:0 0 12px;">Upload your Autoview CSV to compare cost prices.</p>
-      <input type="file" id="dms-file" accept=".csv" onchange="runPriceCheck(this.files[0])" style="display:none;">
-      <button class="btn btn-primary" style="width:100%;" onclick="document.getElementById('dms-file').click()">Choose Autoview CSV</button>
+      <p style="color:var(--text2);font-size:13px;margin:0 0 12px;">Upload the Autoview CSV or the DMS Stock Valuation report.</p>
+      <input type="file" id="dms-file" accept=".csv,.txt" onchange="runPriceCheck(this.files[0])" style="display:none;">
+      <button class="btn btn-primary" style="width:100%;" onclick="document.getElementById('dms-file').click()">Choose DMS CSV or Report</button>
     </div>
     <div id="price-results" style="display:none;padding:0 16px 16px;"></div>
   </div>
@@ -25722,6 +25743,7 @@ const CFG_KEY = 'stocktake_cfg';
 let sb, currentUser, items = [], tab = 'all', editId = null, parsedRows = [];
 let cameraScanner = null, scanMode = false, scanBuffer = '', scanTimer = null;
 let locFilter = null;
+let locUncountedOnly = false;
 let qtyMin = null, qtyMax = null;
 let lastScannedSku = '';
 
@@ -26371,6 +26393,7 @@ function render() {
     if (tab === 'paid' && !p.paid_claimed) return false;
     if (tab === 'system' && !p.system_counted) return false;
     if (locFilter && p.location !== locFilter && p.area !== locFilter) return false;
+    if (locFilter && locUncountedOnly && p.counted_qty !== null && p.counted_qty !== undefined) return false;
     if (qtyMin !== null && p.qty < qtyMin) return false;
     if (qtyMax !== null && p.qty > qtyMax) return false;
     if (q) {
@@ -26413,9 +26436,14 @@ function render() {
   ['all','out','dead','counted','disc','wrote','low','paid'].forEach(t =>
     document.getElementById('tab-'+t).classList.toggle('active', t===tab));
 
+  updateLocWorkflowBar();
   const wrap = document.getElementById('list-wrap');
   if (!filtered.length) {
-    wrap.innerHTML = `<div class="empty-state"><div class="empty-icon">📦</div><p>No items found</p></div>`;
+    if (locFilter && locUncountedOnly) {
+      wrap.innerHTML = `<div class="loc-wf-done"><div style="font-size:44px;margin-bottom:8px;">✓</div><div style="font-size:17px;">${esc(locFilter)} complete</div><div style="font-size:12px;color:var(--text2);margin-top:8px;font-weight:400;">All parts on this shelf are counted. Tap <b>All</b> above to review, or <b>✕</b> to leave.</div></div>`;
+    } else {
+      wrap.innerHTML = `<div class="empty-state"><div class="empty-icon">📦</div><p>No items found</p></div>`;
+    }
     return;
   }
 
@@ -26502,9 +26530,45 @@ function openLocModal() {
 }
 function setLocFilter(v) {
   locFilter = v;
+  locUncountedOnly = false;
   document.getElementById('loc-filter-btn').textContent = v ? `📍 ${v}` : '📍 All';
   document.getElementById('loc-filter-btn').classList.toggle('active', !!v);
   closeLocModal(); render();
+}
+
+function enterLocationWorkflow(loc) {
+  locFilter = loc;
+  locUncountedOnly = true;
+  tab = 'all';
+  document.getElementById('loc-filter-btn').textContent = '📍 ' + loc;
+  document.getElementById('loc-filter-btn').classList.add('active');
+  closeProgress();
+  closeLocModal();
+  render();
+}
+
+function setLocUncountedOnly(v) { locUncountedOnly = !!v; render(); }
+
+function exitLocationWorkflow() {
+  locFilter = null;
+  locUncountedOnly = false;
+  document.getElementById('loc-filter-btn').textContent = '📍 All';
+  document.getElementById('loc-filter-btn').classList.remove('active');
+  render();
+}
+
+function updateLocWorkflowBar() {
+  var bar = document.getElementById('loc-wf-bar');
+  if (!bar) return;
+  if (!locFilter) { bar.classList.remove('show'); return; }
+  bar.classList.add('show');
+  document.getElementById('loc-wf-label').textContent = '📍 ' + locFilter;
+  var atLoc = items.filter(function(p) { return p.location === locFilter || p.area === locFilter; });
+  var uc = atLoc.filter(function(p) { return p.counted_qty === null || p.counted_qty === undefined; }).length;
+  document.getElementById('loc-wf-uc-count').textContent = uc;
+  document.getElementById('loc-wf-all-count').textContent = atLoc.length;
+  document.getElementById('loc-wf-uncounted').classList.toggle('active', locUncountedOnly);
+  document.getElementById('loc-wf-all').classList.toggle('active', !locUncountedOnly);
 }
 function closeLocModal() { document.getElementById('loc-modal').classList.add('hidden'); }
 function filterLocList(q) {
@@ -26691,6 +26755,20 @@ function parseCsvLine(line) {
   return result;
 }
 
+function parseDmsTextReport(text) {
+  // Parses the DMS 'Stock Valuation By Last Cost' fixed-width text report.
+  // Extracts { code, cost } per part row. Skips headers, franchise labels,
+  // separators, and blank lines by requiring the full row pattern.
+  var lines = text.split(/\r?\n/);
+  var partRe = /^(\S+)\s{2,}(.+?)\s{2,}(each|EACH)\s+(-?\d+\.\d+)\s+(-?\d+\.\d+)\s+(-?\d+\.\d+)\s*$/;
+  var parts = [];
+  for (var i = 0; i < lines.length; i++) {
+    var m = lines[i].match(partRe);
+    if (m) parts.push({ code: m[1].trim(), cost: parseFloat(m[4]) });
+  }
+  return parts;
+}
+
 function parseDmsCsv(text) {
   var lines = text.split(/\r?\n/);
   if (lines.length < 2) return [];
@@ -26717,13 +26795,25 @@ function runPriceCheck(file) {
   if (!file) return;
   var reader = new FileReader();
   reader.onload = function(e) {
-    var dmsParts = parseDmsCsv(e.target.result);
-    if (dmsParts.length === 0) { toast('Could not parse any parts from CSV'); return; }
+    var text = e.target.result;
+    var dmsParts = parseDmsCsv(text);
+    var sourceLabel = 'CSV';
+    if (dmsParts.length === 0) {
+      dmsParts = parseDmsTextReport(text);
+      if (dmsParts.length > 0) sourceLabel = 'DMS report';
+    }
+    if (dmsParts.length === 0) { toast('Could not parse any parts from file'); return; }
+    toast('Loaded ' + dmsParts.length + ' parts from ' + sourceLabel);
     var dmsMap = {};
-    dmsParts.forEach(function(d) { dmsMap[d.code.toUpperCase()] = d; });
+    dmsParts.forEach(function(d) {
+      var code = d.code.trim().toUpperCase();
+      dmsMap[code] = d;
+      var stripped = code.replace(/^0+(?=.)/, '');
+      if (stripped !== code && !dmsMap[stripped]) dmsMap[stripped] = d;
+    });
     var mismatches = [], matched = [], notInDms = [];
     items.forEach(function(p) {
-      var key = (p.sku || '').toUpperCase();
+      var key = (p.sku || '').trim().toUpperCase();
       var dms = dmsMap[key];
       if (!dms) { notInDms.push(p); return; }
       dms._matched = true;
@@ -26737,6 +26827,37 @@ function runPriceCheck(file) {
     mismatches.sort(function(a, b) { return Math.abs(b.diff) - Math.abs(a.diff); });
     window._pcMismatches = mismatches;
     window._pcReviewed = 0;
+    // Build unified lookup index across all four buckets
+    var lookup = { matched: {}, mismatch: {}, notInApp: {}, notInDms: {} };
+    function addKeys(bucket, key, val, dmsCode) {
+      if (!key) return;
+      if (!bucket[key]) bucket[key] = val;
+      var strip = key.replace(/^0+(?=.)/, '');
+      if (strip !== key && !bucket[strip]) bucket[strip] = val;
+      if (dmsCode) {
+        var pad = dmsCode.trim().toUpperCase();
+        if (pad !== key && !bucket[pad]) bucket[pad] = val;
+      }
+    }
+    matched.forEach(function(p) {
+      var k = (p.sku||'').trim().toUpperCase();
+      var dmsEntry = dmsMap[k];
+      addKeys(lookup.matched, k, { sku: p.sku, cost: p.cost || 0 }, dmsEntry ? dmsEntry.code : null);
+    });
+    mismatches.forEach(function(m, i) {
+      var k = (m.sku||'').trim().toUpperCase();
+      var dmsEntry = dmsMap[k];
+      addKeys(lookup.mismatch, k, { index: i, sku: m.sku, appCost: m.appCost, dmsCost: m.dmsCost, diff: m.diff }, dmsEntry ? dmsEntry.code : null);
+    });
+    notInApp.forEach(function(d) {
+      var k = (d.code||'').trim().toUpperCase();
+      addKeys(lookup.notInApp, k, { code: d.code, cost: d.cost }, null);
+    });
+    notInDms.forEach(function(p) {
+      var k = (p.sku||'').trim().toUpperCase();
+      addKeys(lookup.notInDms, k, { sku: p.sku, cost: p.cost || 0 }, null);
+    });
+    window._pcLookup = lookup;
     renderPriceResults(dmsParts.length, matched.length, mismatches, notInApp, notInDms);
     toast(mismatches.length + ' price difference(s) found');
   };
@@ -26752,7 +26873,8 @@ function renderPriceResults(dmsCount, matchCount, mismatches, notInApp, notInDms
   r += '<div class="vstat" style="flex:1;min-width:70px;"><div class="vstat-lbl">Diff</div><div class="vstat-val red">' + mismatches.length + '</div></div>';
   r += '<div class="vstat" style="flex:1;min-width:70px;"><div class="vstat-lbl">Not in App</div><div class="vstat-val amber">' + notInApp.length + '</div></div>';
   r += '</div>';
-  r += '<input type="text" id="pc-search" placeholder="Search by part no or location…" oninput="filterPriceResults(this.value)" style="width:100%;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:13px;outline:none;margin-bottom:8px;box-sizing:border-box;">';
+  r += '<input type="text" id="pc-search" placeholder="Look up SKU or search all tabs…" oninput="filterPriceResults(this.value)" style="width:100%;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:13px;outline:none;margin-bottom:8px;box-sizing:border-box;">';
+  r += '<div id="pc-verdict" style="display:none;margin-bottom:8px;"></div>';
   r += '<div class="pc-counter" id="pc-counter">' + pending + ' of ' + mismatches.length + ' to review</div>';
   r += '<div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap;">';
   r += '<button class="tab active" onclick="showPriceTab(this,\'mismatches\')">Price Diff (' + mismatches.length + ')</button>';
@@ -26765,9 +26887,9 @@ function renderPriceResults(dmsCount, matchCount, mismatches, notInApp, notInDms
     var diffStr = (m.diff > 0 ? '+' : '') + m.diff.toFixed(2);
     var diffColor = m.diff > 0 ? 'red' : 'green';
     var reviewed = m.status ? ' reviewed' : '';
-    var searchData = (m.sku + ' ' + (m.name||'') + ' ' + (mp?mp.location||'':'') + ' ' + (mp?mp.area||'':'')).toLowerCase();
-    r += '<div class="pc-row' + reviewed + '" id="pcrow-' + i + '" data-search="' + esc(searchData) + '">';
     var mp = items.find(function(x){return x.id===m.id;});
+    var searchData = (m.sku + ' ' + (m.name||'') + ' ' + (mp ? (mp.location||'') : '') + ' ' + (mp ? (mp.area||'') : '')).toLowerCase();
+    r += '<div class="pc-row' + reviewed + '" id="pcrow-' + i + '" data-search="' + esc(searchData) + '">';
     r += '<div style="font-weight:600;">' + esc(m.sku);
     if (m.status === 'accepted') r += '<span class="pc-badge pc-accepted">Accepted</span>';
     if (m.status === 'kept') r += '<span class="pc-badge pc-kept">Kept</span>';
@@ -26792,12 +26914,12 @@ function renderPriceResults(dmsCount, matchCount, mismatches, notInApp, notInDms
   r += '</div>';
   r += '<div id="ptab-notinapp" style="display:none;">';
   notInApp.forEach(function(d) {
-    r += '<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;">' + esc(d.code) + ' \u2014 ' + fmt(d.cost) + '</div>';
+    r += '<div class="pc-simple-row" data-search="' + esc((d.code||'').toLowerCase()) + '" style="padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;">' + esc(d.code) + ' \u2014 ' + fmt(d.cost) + '</div>';
   });
   r += '</div>';
   r += '<div id="ptab-notindms" style="display:none;">';
   notInDms.forEach(function(p) {
-    r += '<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;">' + esc(p.sku) + ' \u2014 ' + fmt(p.cost || 0) + '</div>';
+    r += '<div class="pc-simple-row" data-search="' + esc((p.sku||'').toLowerCase()) + '" style="padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;">' + esc(p.sku) + ' \u2014 ' + fmt(p.cost || 0) + '</div>';
   });
   r += '</div>';
   if (mismatches.length > 0) {
@@ -26860,11 +26982,54 @@ function updatePcRow(idx) {
 }
 
 function filterPriceResults(q) {
+  var raw = q;
   q = q.toLowerCase().trim();
-  document.querySelectorAll('#ptab-mismatches .pc-row').forEach(function(row) {
+  var rows = document.querySelectorAll('#ptab-mismatches .pc-row, #ptab-notinapp .pc-simple-row, #ptab-notindms .pc-simple-row');
+  rows.forEach(function(row) {
     var data = row.getAttribute('data-search') || '';
     row.style.display = (!q || data.includes(q)) ? '' : 'none';
   });
+  pcUpdateVerdict(raw);
+}
+
+function pcUpdateVerdict(query) {
+  var el = document.getElementById('pc-verdict');
+  if (!el) return;
+  var lu = window._pcLookup;
+  var q = (query||'').trim().toUpperCase();
+  if (!q || !lu) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  var body = '', tap = '';
+  if (lu.matched[q]) {
+    var m = lu.matched[q];
+    body = '<span style="color:var(--green);font-weight:700;">\u2713 Matched</span> at <b>' + fmt(m.cost) + '</b>';
+  } else if (lu.mismatch[q]) {
+    var mm = lu.mismatch[q];
+    var diffStr = (mm.diff > 0 ? '+' : '') + mm.diff.toFixed(2);
+    body = '<span style="color:#f59e0b;font-weight:700;">\u26a0 Price Diff</span> \u2014 App ' + fmt(mm.appCost) + ' \u2192 DMS <b>' + fmt(mm.dmsCost) + '</b> (' + diffStr + ')';
+    tap = 'mismatches';
+  } else if (lu.notInApp[q]) {
+    var na = lu.notInApp[q];
+    body = '<span style="color:#f59e0b;font-weight:700;">\u2b07 In DMS only</span> at ' + fmt(na.cost) + ' <span style="color:var(--text3);font-weight:400;">\u2014 not in your app</span>';
+    tap = 'notinapp';
+  } else if (lu.notInDms[q]) {
+    var nd = lu.notInDms[q];
+    body = '<span style="color:#60a5fa;font-weight:700;">\u2b06 In App only</span> at ' + fmt(nd.cost) + ' <span style="color:var(--text3);font-weight:400;">\u2014 not in DMS export</span>';
+    tap = 'notindms';
+  } else {
+    body = '<span style="color:var(--text3);font-weight:600;">\u2717 Not found in either list</span>';
+  }
+  var cursor = tap ? 'cursor:pointer;' : '';
+  var onclick = tap ? ' onclick="pcJumpTo(\'' + tap + '\')"' : '';
+  var hint = tap ? '<div style="color:var(--text3);font-size:10px;margin-top:3px;text-transform:uppercase;letter-spacing:0.5px;">Tap to jump</div>' : '';
+  el.innerHTML = '<div' + onclick + ' style="padding:10px 12px;background:var(--bg);border:1px solid var(--border-md);border-radius:8px;font-size:13px;' + cursor + '"><div><b>' + esc(query.trim()) + '</b> \u2192 ' + body + '</div>' + hint + '</div>';
+  el.style.display = '';
+}
+
+function pcJumpTo(tabName) {
+  var tabs = document.querySelectorAll('#price-results .tab');
+  var labels = { mismatches: 'Price Diff', notinapp: 'Not in App', notindms: 'Not in DMS' };
+  var wanted = labels[tabName];
+  tabs.forEach(function(t) { if (t.textContent.indexOf(wanted) === 0) t.click(); });
 }
 
 function showPriceTab(btn, tab) {
@@ -26940,7 +27105,12 @@ function renderProgress() {
     var d = locs[loc];
     var lp = d.total ? Math.round(d.counted / d.total * 100) : 0;
     var done = lp >= 100;
-    h += '<div class="prog-loc">';
+    var tappable = loc !== 'No location';
+    if (tappable) {
+      h += '<div class="prog-loc tappable" onclick="enterLocationWorkflow(\'' + esc(loc).replace(/'/g, "&#39;") + '\')">';
+    } else {
+      h += '<div class="prog-loc">';
+    }
     h += '<span class="prog-loc-name' + (done ? ' prog-done' : '') + '">' + esc(loc) + '</span>';
     h += '<div class="prog-loc-bar"><div class="prog-loc-fill" style="width:' + lp + '%"></div></div>';
     h += '<span class="prog-loc-pct' + (done ? ' prog-done' : '') + '">' + lp + '%</span>';
