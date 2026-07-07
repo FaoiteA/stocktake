@@ -330,6 +330,12 @@ td{color:var(--text2);}
 .pc-accepted{background:rgba(41,220,255,0.15);color:#29dcff;}
 .pc-kept{background:rgba(255,255,255,0.08);color:var(--text3);}
 .pc-counter{font-size:13px;color:var(--text2);margin-bottom:8px;}
+.pc-bulk-row{display:flex;gap:8px;margin-bottom:8px;}
+.pc-bulk-btn{flex:1;padding:9px 12px;border-radius:8px;border:1px solid var(--border-md);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;}
+.pc-bulk-accept{background:rgba(41,220,255,0.12);color:#29dcff;border-color:rgba(41,220,255,0.3);}
+.pc-bulk-keep{background:var(--surface2);color:var(--text2);}
+.pc-search-wrap{position:relative;margin-bottom:8px;}
+.pc-clear-btn{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:var(--text3);font-size:16px;cursor:pointer;padding:4px 8px;line-height:1;display:none;}
 
 
 .prog-bar{width:100%;height:6px;background:var(--border);border-radius:3px;margin-top:4px;overflow:hidden;}
@@ -26873,9 +26879,16 @@ function renderPriceResults(dmsCount, matchCount, mismatches, notInApp, notInDms
   r += '<div class="vstat" style="flex:1;min-width:70px;"><div class="vstat-lbl">Diff</div><div class="vstat-val red">' + mismatches.length + '</div></div>';
   r += '<div class="vstat" style="flex:1;min-width:70px;"><div class="vstat-lbl">Not in App</div><div class="vstat-val amber">' + notInApp.length + '</div></div>';
   r += '</div>';
-  r += '<input type="text" id="pc-search" placeholder="Look up SKU or search all tabs…" oninput="filterPriceResults(this.value)" style="width:100%;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:13px;outline:none;margin-bottom:8px;box-sizing:border-box;">';
+  r += '<div class="pc-search-wrap">';
+  r += '<input type="text" id="pc-search" placeholder="Look up SKU or search all tabs…" oninput="filterPriceResults(this.value)" style="width:100%;padding:8px 32px 8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:13px;outline:none;box-sizing:border-box;">';
+  r += '<button class="pc-clear-btn" id="pc-clear-btn" onclick="pcClearSearch()" title="Clear">✕</button>';
+  r += '</div>';
   r += '<div id="pc-verdict" style="display:none;margin-bottom:8px;"></div>';
   r += '<div class="pc-counter" id="pc-counter">' + pending + ' of ' + mismatches.length + ' to review</div>';
+  r += '<div class="pc-bulk-row" id="pc-bulk-row" style="display:' + (pending > 0 ? 'flex' : 'none') + ';">';
+  r += '<button class="pc-bulk-btn pc-bulk-accept" onclick="pcBulkAccept()">✓ Accept All DMS</button>';
+  r += '<button class="pc-bulk-btn pc-bulk-keep" onclick="pcBulkKeep()">Keep All</button>';
+  r += '</div>';
   r += '<div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap;">';
   r += '<button class="tab active" onclick="showPriceTab(this,\'mismatches\')">Price Diff (' + mismatches.length + ')</button>';
   r += '<button class="tab" onclick="showPriceTab(this,\'notinapp\')">Not in App (' + notInApp.length + ')</button>';
@@ -26979,6 +26992,8 @@ function updatePcRow(idx) {
   var pending = window._pcMismatches.filter(function(x) { return !x.status; }).length;
   var counter = document.getElementById('pc-counter');
   if (counter) counter.textContent = pending + ' of ' + window._pcMismatches.length + ' to review';
+  var bulkRow = document.getElementById('pc-bulk-row');
+  if (bulkRow) bulkRow.style.display = pending > 0 ? 'flex' : 'none';
 }
 
 function filterPriceResults(q) {
@@ -26990,6 +27005,83 @@ function filterPriceResults(q) {
     row.style.display = (!q || data.includes(q)) ? '' : 'none';
   });
   pcUpdateVerdict(raw);
+  var btn = document.getElementById('pc-clear-btn');
+  if (btn) btn.style.display = raw ? 'block' : 'none';
+}
+
+function pcClearSearch() {
+  var i = document.getElementById('pc-search');
+  if (!i) return;
+  i.value = '';
+  filterPriceResults('');
+  i.focus();
+}
+
+async function pcBulkAccept() {
+  var pending = pcGetPendingVisible();
+  if (!pending.length) { toast('No pending mismatches to accept'); return; }
+  if (!confirm('Apply DMS price to ' + pending.length + ' pending mismatch' + (pending.length === 1 ? '' : 'es') + '?\n\nThis marks them as counted. Cannot be undone.')) return;
+  await pcBulkApply(pending, 'accept');
+}
+
+async function pcBulkKeep() {
+  var pending = pcGetPendingVisible();
+  if (!pending.length) { toast('No pending mismatches to keep'); return; }
+  if (!confirm('Mark ' + pending.length + ' pending mismatch' + (pending.length === 1 ? '' : 'es') + ' as kept (no price change)?\n\nThis marks them as counted. Cannot be undone.')) return;
+  await pcBulkApply(pending, 'keep');
+}
+
+function pcGetPendingVisible() {
+  var out = [];
+  (window._pcMismatches || []).forEach(function(m, i) {
+    if (m.status) return;
+    var row = document.getElementById('pcrow-' + i);
+    if (!row) return;
+    if (row.style.display === 'none') return;
+    out.push({ m: m, idx: i });
+  });
+  return out;
+}
+
+async function pcBulkApply(pending, mode) {
+  var now = new Date().toISOString();
+  var updates = [];
+  pending.forEach(function(pe) {
+    var m = pe.m;
+    var p = items.find(function(x) { return x.id === m.id; });
+    if (!p) return;
+    if (mode === 'accept') p.cost = m.dmsCost;
+    p.counted_qty = p.qty;
+    p.system_counted = true;
+    p.last_counted = now;
+    m.status = (mode === 'accept') ? 'accepted' : 'kept';
+    var u = { id: m.id, counted_qty: p.counted_qty, last_counted: now };
+    if (mode === 'accept') u.cost = m.dmsCost;
+    updates.push(u);
+  });
+  showSync();
+  try {
+    if (window.viewMode === 'session' && activeSessionId) {
+      await saveSessionSnapshot();
+    } else {
+      var chunkSize = 25;
+      for (var i = 0; i < updates.length; i += chunkSize) {
+        var chunk = updates.slice(i, i + chunkSize);
+        await Promise.all(chunk.map(function(u) {
+          var patch = { counted_qty: u.counted_qty, last_counted: u.last_counted };
+          if (u.cost !== undefined) patch.cost = u.cost;
+          return sb.from('stock_items').update(patch).eq('id', u.id);
+        }));
+      }
+    }
+  } catch (e) {
+    console.error('Bulk apply error:', e);
+    toast('Error saving some updates — check console');
+  }
+  hideSync();
+  pending.forEach(function(pe) { updatePcRow(pe.idx); });
+  render();
+  toast((mode === 'accept' ? 'Applied DMS price to ' : 'Kept prices for ') + pending.length + ' part' + (pending.length === 1 ? '' : 's'));
 }
 
 function pcUpdateVerdict(query) {
