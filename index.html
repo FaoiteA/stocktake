@@ -25719,7 +25719,7 @@ CREATE TRIGGER stock_items_updated_at
     <div class="loc-panel-title" style="display:flex;justify-content:space-between;align-items:center;">Price Check — DMS Compare<span onclick="closePriceCheck()" style="cursor:pointer;font-size:18px;color:var(--text3);padding:4px 8px;">✕</span></div>
     <div id="price-upload" style="padding:16px;">
       <p style="color:var(--text2);font-size:13px;margin:0 0 12px;">Upload the Autoview CSV or the DMS Stock Valuation report.</p>
-      <input type="file" id="dms-file" accept=".csv,.txt" onchange="runPriceCheck(this.files[0])" style="display:none;">
+      <input type="file" id="dms-file" onchange="runPriceCheck(this.files[0])" style="display:none;">
       <button class="btn btn-primary" style="width:100%;" onclick="document.getElementById('dms-file').click()">Choose DMS CSV or Report</button>
     </div>
     <div id="price-results" style="display:none;padding:0 16px 16px;"></div>
