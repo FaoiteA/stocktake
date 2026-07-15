@@ -130,6 +130,7 @@ body{font-family:'DM Sans',sans-serif;color:var(--text);display:flex;flex-direct
 .loc-wf-seg button{background:transparent;border:none;color:var(--text2);padding:6px 10px;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;}
 .loc-wf-seg button.active{background:var(--accent);color:#fff;}
 .loc-wf-exit{background:transparent;border:none;color:var(--text3);font-size:16px;cursor:pointer;padding:4px 6px;line-height:1;}
+.loc-wf-count-all{background:rgba(34,197,94,0.15);color:var(--green);border:1px solid rgba(34,197,94,0.3);border-radius:8px;padding:6px 10px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;}
 .loc-wf-done{padding:32px 20px;text-align:center;background:var(--green-bg);border:1px solid rgba(34,197,94,0.25);border-radius:14px;margin:16px;color:var(--green);font-weight:700;}
 .prog-loc.tappable{cursor:pointer;}
 .prog-loc.tappable:active{background:var(--surface2);}
@@ -540,6 +541,7 @@ CREATE TRIGGER stock_items_updated_at
       <button id="loc-wf-uncounted" onclick="setLocUncountedOnly(true)">Uncounted <span id="loc-wf-uc-count">0</span></button>
       <button id="loc-wf-all" onclick="setLocUncountedOnly(false)">All <span id="loc-wf-all-count">0</span></button>
     </div>
+    <button class="loc-wf-count-all" id="loc-wf-count-all" onclick="countAllLocation()">✓ Count All</button>
     <button class="loc-wf-exit" onclick="exitLocationWorkflow()" title="Exit location workflow">✕</button>
   </div>
 
@@ -26576,6 +26578,8 @@ function updateLocWorkflowBar() {
   document.getElementById('loc-wf-all-count').textContent = atLoc.length;
   document.getElementById('loc-wf-uncounted').classList.toggle('active', locUncountedOnly);
   document.getElementById('loc-wf-all').classList.toggle('active', !locUncountedOnly);
+  var caBtn = document.getElementById('loc-wf-count-all');
+  if (caBtn) caBtn.style.display = uc > 0 ? '' : 'none';
 }
 function closeLocModal() { document.getElementById('loc-modal').classList.add('hidden'); }
 function filterLocList(q) {
@@ -27167,6 +27171,37 @@ async function quickCount(id) {
     hideSync();
   }
   render();
+}
+
+async function countAllLocation() {
+  if (!locFilter) return;
+  var uncounted = items.filter(function(p) {
+    if (p.location !== locFilter && p.area !== locFilter) return false;
+    return p.counted_qty === null || p.counted_qty === undefined;
+  });
+  if (!uncounted.length) { toast('All parts already counted'); return; }
+  if (!confirm('Count all ' + uncounted.length + ' uncounted parts in ' + locFilter + '?')) return;
+  var now = new Date().toISOString();
+  uncounted.forEach(function(p) {
+    p.manually_counted = true;
+    p.counted_qty = p.qty;
+    p.last_counted = now;
+  });
+  if (window.viewMode === 'session' && activeSessionId) {
+    await saveSessionSnapshot();
+  } else {
+    showSync();
+    var chunkSize = 25;
+    for (var i = 0; i < uncounted.length; i += chunkSize) {
+      var chunk = uncounted.slice(i, i + chunkSize);
+      await Promise.all(chunk.map(function(p) {
+        return sb.from('stock_items').update({ counted_qty: p.counted_qty, last_counted: p.last_counted }).eq('id', p.id);
+      }));
+    }
+    hideSync();
+  }
+  render();
+  toast('\u2705 Counted ' + uncounted.length + ' parts in ' + locFilter);
 }
 
 function openProgress() {
