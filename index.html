@@ -27298,16 +27298,7 @@ async function checkSnapshotVersion() {
   var resp = await sb.from('stock_sessions').select('snapshot_version').eq('id', activeSessionId).single();
   var dbVer = (resp.data && resp.data.snapshot_version) || 0;
   if (dbVer > snapshotVersion) {
-    toast('\u26a0 Another device updated the stock take. Refreshing...');
-    var r2 = await sb.from('stock_sessions').select('*').eq('id', activeSessionId).single();
-    if (r2.data && r2.data.snapshot) {
-      items = r2.data.snapshot;
-      snapshotVersion = r2.data.snapshot_version || 0;
-      var si = sessions.findIndex(function(x) { return x.id === activeSessionId; });
-      if (si >= 0) sessions[si] = r2.data;
-      render();
-    }
-    return false;
+    snapshotVersion = dbVer;
   }
   return true;
 }
