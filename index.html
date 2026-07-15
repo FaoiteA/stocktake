@@ -25747,6 +25747,7 @@ CREATE TRIGGER stock_items_updated_at
 <script>
 const CFG_KEY = 'stocktake_cfg';
 let sb, currentUser, items = [], tab = 'all', editId = null, parsedRows = [];
+let snapshotVersion = 0;
 let cameraScanner = null, scanMode = false, scanBuffer = '', scanTimer = null;
 let locFilter = null;
 let locUncountedOnly = false;
@@ -26008,7 +26009,7 @@ async function init() {
   sb = window.supabase.createClient(cfg.url, cfg.key);
   const { data: { session } } = await sb.auth.getSession();
   hide('loading-overlay');
-  if (session) { currentUser = session.user; await showApp(); }
+  if (session) { currentUser = session.user; await showApp(); await autoBackup(); }
   else show('login-screen');
 }
 
@@ -26219,7 +26220,7 @@ async function startPolling() {
       // If we're viewing the active session, swap items to its updated snapshot
       if (inSession) {
         const s = sessions.find(x => x.id === activeSessionId);
-        if (s && s.snapshot) items = s.snapshot;
+        if (s && s.snapshot) { items = s.snapshot; snapshotVersion = s.snapshot_version || 0; }
       }
       didRender = true;
     }
@@ -27159,7 +27160,7 @@ async function quickCount(id) {
     p.last_counted = null;
   }
   if (window.viewMode === 'session' && activeSessionId) {
-    await saveSessionSnapshot();
+    await saveSessionItem(id);
   } else {
     showSync();
     await sb.from('stock_items').update({ counted_qty: p.counted_qty, last_counted: p.last_counted }).eq('id', id);
@@ -27233,7 +27234,7 @@ async function toggleSystemCount(id, checked) {
     p.last_counted = null;
   }
   if (window.viewMode === 'session' && activeSessionId) {
-    await saveSessionSnapshot();
+    await saveSessionItem(id);
   } else {
     showSync();
     await sb.from('stock_items').update({ counted_qty: p.counted_qty, last_counted: p.last_counted }).eq('id', id);
@@ -27245,26 +27246,56 @@ async function toggleSystemCount(id, checked) {
 }
 
 async function saveSessionSnapshot() {
-  if (window.viewMode === 'session' && activeSessionId) {
-    const s = sessions.find(x => x.id === activeSessionId);
-    if (s) {
-      s.snapshot = items.map(p => ({...p}));
-      showSync();
-      await sb.from('stock_sessions').update({ snapshot: s.snapshot }).eq('id', activeSessionId);
-      hideSync();
-    }
-  }
+  if (!(window.viewMode === 'session' && activeSessionId)) return;
+  var s = sessions.find(function(x) { return x.id === activeSessionId; });
+  if (!s) return;
+  var ok = await checkSnapshotVersion();
+  if (!ok) return;
+  s.snapshot = items.map(function(p) { return Object.assign({}, p); });
+  snapshotVersion++;
+  s.snapshot_version = snapshotVersion;
+  showSync();
+  await sb.from('stock_sessions').update({ snapshot: s.snapshot, snapshot_version: snapshotVersion }).eq('id', activeSessionId);
+  hideSync();
 }
-async function saveSessionSnapshot() {
-  if (window.viewMode === 'session' && activeSessionId) {
-    const s = sessions.find(x => x.id === activeSessionId);
-    if (s) {
-      s.snapshot = items.map(p => ({...p}));
-      showSync();
-      await sb.from('stock_sessions').update({ snapshot: s.snapshot }).eq('id', activeSessionId);
-      hideSync();
+
+async function checkSnapshotVersion() {
+  var resp = await sb.from('stock_sessions').select('snapshot_version').eq('id', activeSessionId).single();
+  var dbVer = (resp.data && resp.data.snapshot_version) || 0;
+  if (dbVer > snapshotVersion) {
+    toast('\u26a0 Another device updated the stock take. Refreshing...');
+    var r2 = await sb.from('stock_sessions').select('*').eq('id', activeSessionId).single();
+    if (r2.data && r2.data.snapshot) {
+      items = r2.data.snapshot;
+      snapshotVersion = r2.data.snapshot_version || 0;
+      var si = sessions.findIndex(function(x) { return x.id === activeSessionId; });
+      if (si >= 0) sessions[si] = r2.data;
+      render();
     }
+    return false;
   }
+  return true;
+}
+
+async function saveSessionItem(itemId) {
+  if (!(window.viewMode === 'session' && activeSessionId)) return;
+  var s = sessions.find(function(x) { return x.id === activeSessionId; });
+  if (!s) return;
+  var ok = await checkSnapshotVersion();
+  if (!ok) return;
+  var p = items.find(function(x) { return x.id === itemId; });
+  if (!p || !s.snapshot) return;
+  var idx = -1;
+  for (var i = 0; i < s.snapshot.length; i++) {
+    if (s.snapshot[i].id === itemId) { idx = i; break; }
+  }
+  if (idx < 0) return;
+  s.snapshot[idx] = Object.assign({}, p);
+  snapshotVersion++;
+  s.snapshot_version = snapshotVersion;
+  showSync();
+  await sb.from('stock_sessions').update({ snapshot: s.snapshot, snapshot_version: snapshotVersion }).eq('id', activeSessionId);
+  hideSync();
 }
 async function saveCounted(id) {
   const val = document.getElementById('count-input').value;
@@ -27276,16 +27307,12 @@ async function saveCounted(id) {
     p.counted_qty = counted;
   p.last_counted = new Date().toISOString();
   if (window.viewMode === 'session' && activeSessionId) {
-    await saveSessionSnapshot();
-  } else {
-    if (window.viewMode === 'session' && activeSessionId) {
-    await saveSessionSnapshot();
+    await saveSessionItem(id);
   } else {
     showSync();
     const { error } = await sb.from('stock_items').update({ counted_qty: counted, last_counted: p.last_counted }).eq('id', id);
     hideSync();
     if (error) { toast('Error: ' + error.message); return; }
-  }
   }
   renderDetailBody(p);
   render();
@@ -27298,16 +27325,12 @@ async function reconcile(id) {
   if (!confirm(`Update system qty from ${p.qty} to ${p.counted_qty}?`)) return;
   p.qty = p.counted_qty;
   if (window.viewMode === 'session' && activeSessionId) {
-    await saveSessionSnapshot();
-  } else {
-    if (window.viewMode === 'session' && activeSessionId) {
-    await saveSessionSnapshot();
+    await saveSessionItem(id);
   } else {
     showSync();
     const { error } = await sb.from('stock_items').update({ qty: p.qty }).eq('id', id);
     hideSync();
     if (error) { toast('Error: ' + error.message); return; }
-  }
   }
   renderDetailBody(p); render();
   toast('System qty updated');
@@ -27318,15 +27341,11 @@ async function toggleFlag(id, field, value) {
   if (!p) return;
   p[field] = value;
   if (window.viewMode === 'session' && activeSessionId) {
-    await saveSessionSnapshot();
-  } else {
-    if (window.viewMode === 'session' && activeSessionId) {
-    await saveSessionSnapshot();
+    await saveSessionItem(id);
   } else {
     showSync();
     await sb.from('stock_items').update({ [field]: value }).eq('id', id);
     hideSync();
-  }
   }
   render();
   toast(value ? `Marked as ${field==='dead_stock'?'dead stock':'wrote off'}` : 'Flag removed');
@@ -27357,13 +27376,7 @@ async function inlineAdj(id, delta) {
   // Update badge inline
   render();
   if (window.viewMode === 'session' && activeSessionId) {
-    const s = sessions.find(x => x.id === activeSessionId);
-    if (s) {
-      s.snapshot = items.map(p => ({...p}));
-      showSync();
-      await sb.from('stock_sessions').update({ snapshot: s.snapshot }).eq('id', activeSessionId);
-      hideSync();
-    }
+    await saveSessionItem(id);
   } else {
     showSync();
     const logEntry = { ts: new Date().toISOString(), user: currentUser.email, from: prevQty, to: newQty, reason: '' };
@@ -27445,13 +27458,12 @@ async function saveItem() {
     wrote_off: document.getElementById('f-wrote').checked,
     paid_claimed: document.getElementById('f-paid').checked
   };
-  // Check for duplicate SKU when adding new item
+  // Check for duplicate SKU in memory and database
   if (!editId) {
-    const duplicate = items.find(p => p.sku.trim().toLowerCase() === sku.toLowerCase());
-    if (duplicate) {
-      toast(`⚠ SKU already exists: ${duplicate.name || duplicate.sku}`);
-      return;
-    }
+    var dupLocal = items.find(function(p) { return (p.sku||'').trim().toLowerCase() === sku.toLowerCase(); });
+    if (dupLocal) { toast('\u26a0 SKU already exists: ' + (dupLocal.name || dupLocal.sku)); return; }
+    var dupResp = await sb.from('stock_items').select('id,sku,name').ilike('sku', sku.trim()).limit(1);
+    if (dupResp.data && dupResp.data.length > 0) { toast('\u26a0 SKU already in database: ' + (dupResp.data[0].name || dupResp.data[0].sku)); return; }
   }
   showSync();
   if (editId) {
@@ -29127,6 +29139,26 @@ function hideUndo() {
 async function doUndo() {
   if (undoAction) { await undoAction(); hideUndo(); }
 }
+async function autoBackup() {
+  try {
+    var today = new Date().toISOString().slice(0, 10);
+    if (localStorage.getItem('last_auto_backup') === today) return;
+    var si = await sb.from('stock_items').select('*');
+    var ss = await sb.from('stock_sessions').select('*').order('created_at', { ascending: false });
+    var sa = await sb.from('app_settings').select('*');
+    var backup = { exported_at: new Date().toISOString(), exported_by: (currentUser||{}).email, auto_backup: true, stock_items: si.data||[], stock_sessions: ss.data||[], app_settings: sa.data||[] };
+    await sb.from('backups').insert({ backup_date: today, created_by: (currentUser||{}).email||'unknown', data: backup });
+    var cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 7);
+    await sb.from('backups').delete().lt('created_at', cutoff.toISOString());
+    var blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a'); a.href = url; a.download = 'stocktake-backup-' + today + '.json';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+    localStorage.setItem('last_auto_backup', today);
+    toast('\u2705 Daily backup saved');
+  } catch (e) { console.error('Auto backup failed:', e); }
+}
+
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 // Service worker disabled to prevent caching issues
