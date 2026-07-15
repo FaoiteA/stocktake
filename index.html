@@ -503,7 +503,7 @@ CREATE TRIGGER stock_items_updated_at
 
   <div class="value-strip">
     <div class="vstat"><div class="vstat-lbl">Parts</div><div class="vstat-val" id="vs-total">1380</div></div>
-    <div class="vstat" title="Net Stock Value = Total Stock - Dead Stock - Paid/Claimed - Wrote Off - Unpaid Warranty"><div class="vstat-lbl">Stock Value <span style="opacity:0.5;font-size:10px;">ⓘ</span></div><div class="vstat-val green" id="vs-value">€2,431</div></div>
+    <div class="vstat" title="Stock Value = Total Stock - Dead Stock - Paid/Claimed"><div class="vstat-lbl">Stock Value <span style="opacity:0.5;font-size:10px;">ⓘ</span></div><div class="vstat-val green" id="vs-value">€2,431</div></div>
     <div class="vstat"><div class="vstat-lbl">Out of Stock</div><div class="vstat-val red" id="vs-out">1339</div></div>
     <div class="vstat" style="display:none" id="vs-low-wrap"><div class="vstat-lbl">Low Stock</div><div class="vstat-val amber" id="vs-low">0</div></div>
     <div class="vstat" onclick="openProgress()" style="cursor:pointer;" title="View progress by location"><div class="vstat-lbl">Counted</div><div class="vstat-val amber" id="vs-counted">0%</div><div class="prog-bar"><div class="prog-fill" id="vs-prog" style="width:0%"></div></div></div>
@@ -26425,12 +26425,12 @@ function render() {
   const paidVal = items.filter(p => p.paid_claimed).reduce((s,p) => s + itemValue(p), 0);
   const wroteVal = manualStatValues.wrote;
   const warrantyVal = manualStatValues.warranty;
-  const netVal = totalVal - deadVal - paidVal - wroteVal - warrantyVal;
+  const netVal = totalVal - deadVal - paidVal;
 
   document.getElementById('vs-total').textContent = items.length;
   document.getElementById('vs-value').textContent = fmt(netVal);
   const grossEl = document.getElementById('vs-gross');
-  if (grossEl) grossEl.textContent = fmt(netVal + deadVal + paidVal + wroteVal + warrantyVal);
+  if (grossEl) grossEl.textContent = fmt(netVal + deadVal + paidVal);
   document.getElementById('vs-out').textContent = outCount;
   const lowCount = items.filter(p => p.qty > 0 && p.min_qty > 0 && p.qty <= p.min_qty).length;
   document.getElementById('vs-low').textContent = lowCount;
@@ -27911,7 +27911,7 @@ function exportCSV() {
   const paidVal = items.filter(p => p.paid_claimed).reduce((s,p) => s + itemValue(p), 0);
   const wroteVal = manualStatValues.wrote;
   const warrantyVal = manualStatValues.warranty;
-  const netVal = totalVal - deadVal - paidVal - wroteVal - warrantyVal;
+  const netVal = totalVal - deadVal - paidVal;
   const date = new Date().toLocaleDateString('en-IE');
 
   const rows = [
@@ -27993,7 +27993,7 @@ function openReport() {
   const paidVal = paidItems.reduce((s,p)=>s+itemValue(p),0);
   const wroteVal = manualStatValues.wrote;
   const warrantyVal = manualStatValues.warranty;
-  const netVal = totalVal - deadVal - paidVal - wroteVal - warrantyVal;
+  const netVal = totalVal - deadVal - paidVal;
   const pct = items.length ? Math.round(counted.length/items.length*100) : 0;
 
   const areaMap = {};
