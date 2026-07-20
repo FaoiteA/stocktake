@@ -27537,6 +27537,11 @@ async function deleteItem(id) {
   if (error) { toast('Error: '+error.message); return; }
   const deleted = items.find(x => x.id === id);
   items = items.filter(x => x.id !== id);
+  if (window.viewMode === 'session' && activeSessionId) {
+    var s = sessions.find(function(x) { return x.id === activeSessionId; });
+    if (s && s.snapshot) s.snapshot = s.snapshot.filter(function(x) { return x.id !== id; });
+    await saveSessionSnapshot();
+  }
   closeDetail(); render();
   showUndo(`Deleted ${deleted?.name||deleted?.sku||'item'}`, async () => {
     if (!deleted) return;
@@ -29151,8 +29156,11 @@ function showUndo(msg, fn) {
   clearTimeout(undoTimer);
   clearInterval(undoCountdown);
   document.getElementById('undo-bar-msg').textContent = msg;
-  document.getElementById('undo-bar-timer').textContent = '';
+  var secs = 10;
+  document.getElementById('undo-bar-timer').textContent = secs;
   document.getElementById('undo-bar').classList.add('show');
+  undoCountdown = setInterval(function() { secs--; document.getElementById('undo-bar-timer').textContent = secs > 0 ? secs : ''; }, 1000);
+  undoTimer = setTimeout(function() { hideUndo(); }, 10000);
 }
 
 function hideUndo() {
