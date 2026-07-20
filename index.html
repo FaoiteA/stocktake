@@ -26401,7 +26401,10 @@ function render() {
     if (tab === 'low' && !(p.qty > 0 && p.min_qty > 0 && p.qty <= p.min_qty)) return false;
     if (tab === 'paid' && !p.paid_claimed) return false;
     if (tab === 'system' && !p.system_counted) return false;
-    if (locFilter && p.location !== locFilter && p.area !== locFilter) return false;
+    if (locFilter) {
+      if (locFilter === 'No location') { if (p.location || p.area) return false; }
+      else if (p.location !== locFilter && p.area !== locFilter) return false;
+    }
     if (locFilter && locUncountedOnly && p.counted_qty !== null && p.counted_qty !== undefined) return false;
     if (qtyMin !== null && p.qty < qtyMin) return false;
     if (qtyMax !== null && p.qty > qtyMax) return false;
@@ -26572,7 +26575,10 @@ function updateLocWorkflowBar() {
   if (!locFilter) { bar.classList.remove('show'); return; }
   bar.classList.add('show');
   document.getElementById('loc-wf-label').textContent = '📍 ' + locFilter;
-  var atLoc = items.filter(function(p) { return p.location === locFilter || p.area === locFilter; });
+  var atLoc = items.filter(function(p) {
+    if (locFilter === 'No location') return !p.location && !p.area;
+    return p.location === locFilter || p.area === locFilter;
+  });
   var uc = atLoc.filter(function(p) { return p.counted_qty === null || p.counted_qty === undefined; }).length;
   document.getElementById('loc-wf-uc-count').textContent = uc;
   document.getElementById('loc-wf-all-count').textContent = atLoc.length;
@@ -27176,7 +27182,8 @@ async function quickCount(id) {
 async function countAllLocation() {
   if (!locFilter) return;
   var uncounted = items.filter(function(p) {
-    if (p.location !== locFilter && p.area !== locFilter) return false;
+    if (locFilter === 'No location') { if (p.location || p.area) return false; }
+    else if (p.location !== locFilter && p.area !== locFilter) return false;
     return p.counted_qty === null || p.counted_qty === undefined;
   });
   if (!uncounted.length) { toast('All parts already counted'); return; }
@@ -27233,12 +27240,7 @@ function renderProgress() {
     var d = locs[loc];
     var lp = d.total ? Math.round(d.counted / d.total * 100) : 0;
     var done = lp >= 100;
-    var tappable = loc !== 'No location';
-    if (tappable) {
-      h += '<div class="prog-loc tappable" onclick="enterLocationWorkflow(\'' + esc(loc).replace(/'/g, "&#39;") + '\')">';
-    } else {
-      h += '<div class="prog-loc">';
-    }
+    h += '<div class="prog-loc tappable" onclick="enterLocationWorkflow(\'' + esc(loc).replace(/'/g, "&#39;") + '\')">';
     h += '<span class="prog-loc-name' + (done ? ' prog-done' : '') + '">' + esc(loc) + '</span>';
     h += '<div class="prog-loc-bar"><div class="prog-loc-fill" style="width:' + lp + '%"></div></div>';
     h += '<span class="prog-loc-pct' + (done ? ' prog-done' : '') + '">' + lp + '%</span>';
