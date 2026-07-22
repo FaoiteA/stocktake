@@ -28570,34 +28570,59 @@ function renderSessionsList() {
     body.innerHTML = `<div class="empty-state"><div class="empty-icon">📋</div><p>No sessions saved yet.<br>Complete a stock take and save it.</p></div>`;
     return;
   }
-  // Group by year
   body.innerHTML = sessions.map((s,i) => {
     const date = new Date(s.created_at).toLocaleDateString('en-IE', {day:'numeric',month:'short',year:'numeric'});
+    // Live computation from snapshot
+    const snap = Array.isArray(s.snapshot) ? s.snapshot : [];
+    const totalParts = snap.length;
+    const countedParts = snap.filter(p => p.counted_qty !== null && p.counted_qty !== undefined).length;
+    const pct = totalParts ? Math.round(countedParts / totalParts * 100) : 0;
+    const grossVal = snap.reduce((sum,p) => sum + ((p.qty||0) * (p.cost||0)), 0);
+    const deadItems = snap.filter(p => p.dead_stock);
+    const paidItems = snap.filter(p => p.paid_claimed);
+    const deadVal = deadItems.reduce((sum,p) => sum + ((p.qty||0) * (p.cost||0)), 0);
+    const paidVal = paidItems.reduce((sum,p) => sum + ((p.qty||0) * (p.cost||0)), 0);
+    const netVal = grossVal - deadVal - paidVal;
+    // Warranty/Wrote off: prefer session-stamped values; fall back to current manual stats if session stamp is 0
+    const msv = (typeof manualStatValues !== 'undefined') ? manualStatValues : { wrote:0, warranty:0 };
+    const warrantyVal = Number(s.warranty_value) || msv.warranty || 0;
+    const wroteVal    = Number(s.wrote_off_value) || msv.wrote    || 0;
+    const fmtE = (n) => '€' + Number(n||0).toLocaleString('en-IE',{minimumFractionDigits:0,maximumFractionDigits:0});
+    const pctColor = pct >= 100 ? 'var(--green)' : (pct >= 50 ? 'var(--amber)' : 'var(--text3)');
+    const wroteRow = wroteVal > 0 ? `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;background:var(--red-bg);border-radius:6px;margin-bottom:8px;font-size:11px;"><span style="color:var(--red);font-weight:600;text-transform:uppercase;letter-spacing:0.3px;">Wrote off</span><span style="color:var(--red);font-weight:600;">${fmtE(wroteVal)}</span></div>` : '';
     return `<div style="background:var(--bg2);border-radius:12px;padding:14px;margin-bottom:10px;">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
-        <div>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;gap:12px;">
+        <div style="min-width:0;flex:1;">
           <div style="font-size:14px;font-weight:600;">${esc(s.name)}</div>
           <div style="font-size:11px;color:var(--text3);margin-top:2px;">${date} · by ${esc(s.created_by||'')}</div>
         </div>
-        <div style="text-align:right;">
-          <div style="font-size:16px;font-weight:700;color:var(--green);">€${Number(s.total_value).toLocaleString('en-IE',{minimumFractionDigits:0,maximumFractionDigits:0})}</div>
-          <div style="font-size:11px;color:var(--text3);">${s.total_parts} parts</div>
+        <div style="text-align:right;flex-shrink:0;">
+          <div style="font-size:10px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:0.3px;">Net good stock</div>
+          <div style="font-size:18px;font-weight:700;color:var(--green);line-height:1.1;">${fmtE(netVal)}</div>
+          <div style="font-size:11px;color:${pctColor};margin-top:2px;font-weight:600;">${countedParts}/${totalParts} · ${pct}%${pct>=100?' ✓':''}</div>
         </div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:10px;">
-        <div style="background:var(--red-bg);border-radius:6px;padding:6px 8px;text-align:center;">
-          <div style="font-size:9px;color:var(--red);font-weight:600;text-transform:uppercase;">Wrote Off</div>
-          <div style="font-size:13px;font-weight:600;color:var(--red);">€${Number(s.wrote_off_value||0).toLocaleString('en-IE',{minimumFractionDigits:0,maximumFractionDigits:0})}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin-bottom:10px;">
+        <div style="background:var(--surface2);border-radius:6px;padding:6px 8px;text-align:center;">
+          <div style="font-size:9px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:0.3px;">Gross total</div>
+          <div style="font-size:13px;font-weight:600;">${fmtE(grossVal)}</div>
         </div>
         <div style="background:var(--purple-bg);border-radius:6px;padding:6px 8px;text-align:center;">
-          <div style="font-size:9px;color:var(--purple);font-weight:600;text-transform:uppercase;">Dead Stock</div>
-          <div style="font-size:13px;font-weight:600;color:var(--purple);">€${Number(s.dead_stock_value||0).toLocaleString('en-IE',{minimumFractionDigits:0,maximumFractionDigits:0})}</div>
+          <div style="font-size:9px;color:var(--purple);font-weight:600;text-transform:uppercase;letter-spacing:0.3px;">Dead stock</div>
+          <div style="font-size:13px;font-weight:600;color:var(--purple);">${fmtE(deadVal)}</div>
+          <div style="font-size:9px;color:var(--purple);opacity:0.7;">${deadItems.length} items</div>
         </div>
         <div style="background:var(--amber-bg);border-radius:6px;padding:6px 8px;text-align:center;">
-          <div style="font-size:9px;color:var(--amber);font-weight:600;text-transform:uppercase;">Warranty</div>
-          <div style="font-size:13px;font-weight:600;color:var(--amber);">€${Number(s.warranty_value||0).toLocaleString('en-IE',{minimumFractionDigits:0,maximumFractionDigits:0})}</div>
+          <div style="font-size:9px;color:var(--amber);font-weight:600;text-transform:uppercase;letter-spacing:0.3px;">Paid/Claimed</div>
+          <div style="font-size:13px;font-weight:600;color:var(--amber);">${fmtE(paidVal)}</div>
+          <div style="font-size:9px;color:var(--amber);opacity:0.7;">${paidItems.length} items</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:6px;padding:6px 8px;text-align:center;">
+          <div style="font-size:9px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:0.3px;">Warranty</div>
+          <div style="font-size:13px;font-weight:600;color:var(--amber);">${fmtE(warrantyVal)}</div>
         </div>
       </div>
+      ${wroteRow}
       ${s.notes ? `<div style="font-size:12px;color:var(--text3);margin-bottom:8px;">${esc(s.notes)}</div>` : ''}
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button class="btn btn-secondary" style="flex:1;padding:8px;font-size:12px;" onclick="openSessionDetail('${s.id}')">View</button>
