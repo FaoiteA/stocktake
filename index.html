@@ -27332,9 +27332,11 @@ async function saveCounted(id) {
   if (isNaN(counted)) { toast('Enter a valid number'); return; }
   const p = items.find(x => x.id === id);
   if (!p) return;
-    p.counted_qty = counted;
+  p.counted_qty = counted;
   p.last_counted = new Date().toISOString();
   if (window.viewMode === 'session' && activeSessionId) {
+    // Fix: also update qty so value calcs reflect the counted value
+    p.qty = counted;
     await saveSessionItem(id);
   } else {
     showSync();
@@ -27344,7 +27346,11 @@ async function saveCounted(id) {
   }
   renderDetailBody(p);
   render();
-  toast(counted === p.qty ? '✓ Count matches system' : `⚠ Discrepancy: system=${p.qty}, counted=${counted}`);
+  if (window.viewMode === 'session' && activeSessionId) {
+    toast(`✓ Counted: ${counted}`);
+  } else {
+    toast(counted === p.qty ? '✓ Count matches system' : `⚠ Discrepancy: system=${p.qty}, counted=${counted}`);
+  }
 }
 
 async function reconcile(id) {
@@ -28425,40 +28431,100 @@ let activeSessionId = null;
 async function pushToLive(id, name) {
   const s = sessions.find(x => x.id === id);
   if (!s || !s.snapshot || !s.snapshot.length) { toast('No parts in this session'); return; }
-  const partCount = s.snapshot.length;
-  const totalVal = s.snapshot.reduce((sum, p) => sum + ((p.qty||0) * (p.cost||0)), 0);
-  const counted = s.snapshot.filter(p => (p.qty||0) > 0).length;
-  if (!confirm(`Push "${name}" to Current Stock?\n\n📦 Parts: ${partCount}\n✅ Counted: ${counted}\n💶 Value: €${totalVal.toFixed(2)}\n\n⚠️ This will overwrite your live quantities.`)) return;
+
+  // Effective qty: prefer counted_qty when set (handles snapshots from before the saveCounted fix)
+  const effQty = (p) => {
+    if (p.counted_qty !== null && p.counted_qty !== undefined) return Number(p.counted_qty) || 0;
+    return Number(p.qty) || 0;
+  };
+
+  // Dedupe snapshot by SKU. For duplicate SKUs, keep the row with the highest effective qty.
+  const bySku = new Map();
+  let skippedNoSku = 0, skippedNoId = 0;
+  for (const p of s.snapshot) {
+    if (!p.id) { skippedNoId++; continue; }
+    if (!p.sku || !String(p.sku).trim()) { skippedNoSku++; continue; }
+    const key = String(p.sku).trim();
+    const existing = bySku.get(key);
+    if (!existing || effQty(p) > effQty(existing)) bySku.set(key, p);
+  }
+
+  // Build the rows to insert
+  const rows = [...bySku.values()].map(p => {
+    const q = effQty(p);
+    return {
+      id: p.id,
+      sku: String(p.sku).trim(),
+      name: p.name || '',
+      area: p.area || '',
+      location: p.location || '',
+      qty: q,
+      cost: Number(p.cost) || 0,
+      wrote_off: !!p.wrote_off,
+      dead_stock: !!p.dead_stock,
+      paid_claimed: !!p.paid_claimed,
+      counted_qty: q,                 // mark as 100% counted after push
+      min_qty: Number(p.min_qty) || 0,
+      change_log: p.change_log || [],
+      last_counted: new Date().toISOString(),
+      last_count: q
+    };
+  });
+
+  const partCount = rows.length;
+  const grossVal = rows.reduce((sum, p) => sum + (p.qty * p.cost), 0);
+  const deadVal  = rows.filter(p => p.dead_stock).reduce((sum, p) => sum + (p.qty * p.cost), 0);
+  const paidVal  = rows.filter(p => p.paid_claimed).reduce((sum, p) => sum + (p.qty * p.cost), 0);
+  const netVal   = grossVal - deadVal - paidVal;
+
+  const skipMsg = (skippedNoSku || skippedNoId)
+    ? `\n\n⚠ Skipped: ${skippedNoSku} no-SKU, ${skippedNoId} no-ID`
+    : '';
+
+  if (!confirm(
+    `Push "${name}" to Current Stock?\n\n` +
+    `📦 Unique SKUs: ${partCount}\n` +
+    `💶 Gross: €${grossVal.toLocaleString('en-IE',{minimumFractionDigits:0,maximumFractionDigits:0})}\n` +
+    `💶 Net Good: €${netVal.toLocaleString('en-IE',{minimumFractionDigits:0,maximumFractionDigits:0})}\n` +
+    skipMsg +
+    `\n\n⚠ This DELETES all current stock_items and replaces with this snapshot. Cannot undo without a backup.`
+  )) return;
+
   showSync();
   document.getElementById('loading-txt').textContent = 'Pushing to live stock…';
   show('loading-overlay');
-  // Update in batches of 100
-  for (let i = 0; i < s.snapshot.length; i += 100) {
-    const batch = s.snapshot.slice(i, i + 100);
-    await Promise.all(batch.map(p =>
-      sb.from('stock_items').update({
-        qty: p.qty||0,
-        last_count: p.qty||0,
-        cost: p.cost||0,
-        location: p.location||'',
-        area: p.area||'',
-        name: p.name||'',
-        dead_stock: p.dead_stock||false,
-        wrote_off: p.wrote_off||false,
-        paid_claimed: p.paid_claimed||false
-      }).eq('id', p.id)
-    ));
+
+  try {
+    // 1. Delete all stock_items
+    const { error: dErr } = await sb.from('stock_items').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    if (dErr) throw new Error('Delete failed: ' + dErr.message);
+
+    // 2. Insert in batches of 100
+    for (let i = 0; i < rows.length; i += 100) {
+      const batch = rows.slice(i, i + 100);
+      const { error: iErr } = await sb.from('stock_items').insert(batch);
+      if (iErr) throw new Error(`Insert failed at row ${i}: ${iErr.message}`);
+      document.getElementById('loading-txt').textContent =
+        `Inserting… ${Math.min(i + 100, rows.length)}/${rows.length}`;
+    }
+
+    await loadItems();
+    activeSessionId = null;
+    await sb.from('app_settings').upsert({ key: 'active_session_id', value: '' });
+    const bar = document.getElementById('active-session-bar');
+    if (bar) bar.style.display = 'none';
+    window.viewMode = 'live';
+    if (typeof updateTopbarTitle === 'function') updateTopbarTitle();
+    render();
+    closeSessions();
+    toast(`✓ Current Stock replaced from "${name}" (${partCount} parts)`);
+  } catch (err) {
+    console.error(err);
+    alert('Push failed: ' + err.message + '\n\nCurrent Stock may be in an inconsistent state. Restore from backup if needed.');
+  } finally {
+    hide('loading-overlay');
+    hideSync();
   }
-  await loadItems();
-  hide('loading-overlay');
-  hideSync();
-  // Deactivate session mode and go back to live
-  activeSessionId = null;
-  await sb.from('app_settings').upsert({ key: 'active_session_id', value: '' });
-  document.getElementById('active-session-bar').style.display = 'none';
-  render();
-  closeSessions();
-  toast(`✓ Live stock updated from "${name}"`);
 }
 
 async function setActiveSession(id, name) {
