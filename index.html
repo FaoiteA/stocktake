@@ -27925,7 +27925,7 @@ function exportCSV() {
     ['Stock Take Export', date],
     [],
     ['SUMMARY'],
-    ['Net Stock Value', netVal.toFixed(2)],
+    ['Net Good Stock Value', netVal.toFixed(2)],
     ['Total Stock Value (gross)', totalVal.toFixed(2)],
     ['Dead Stock', deadVal.toFixed(2)],
     ['Paid/Claimed', paidVal.toFixed(2)],
@@ -28018,10 +28018,11 @@ function openReport() {
       <div class="report-row"><span class="report-key">Gross stock value</span><span class="report-val">${fmt(totalVal)}</span></div>
       <div class="report-row"><span class="report-key">Dead stock</span><span class="report-val red">− ${fmt(deadVal)} (${deadItems.length} items)</span></div>
       <div class="report-row"><span class="report-key">Paid/Claimed</span><span class="report-val red">− ${fmt(paidVal)} (${paidItems.length} items)</span></div>
-      <div class="report-row"><span class="report-key">Wrote off</span><span class="report-val red">− ${fmt(wroteVal)}</span></div>
-      <div class="report-row"><span class="report-key">Unpaid warranty</span><span class="report-val red">− ${fmt(warrantyVal)}</span></div>
-      <div class="report-row"><span class="report-key" style="font-weight:700;color:var(--text);">Net stock value</span><span class="report-val green" style="font-size:16px;">${fmt(netVal)}</span></div>
+      <div class="report-row"><span class="report-key" style="font-weight:700;color:var(--text);">Net good stock value</span><span class="report-val green" style="font-size:16px;">${fmt(netVal)}</span></div>
       <div class="report-row"><span class="report-key">Out of stock</span><span class="report-val red">${outItems.length} items</span></div>
+      <div style="border-top:1px solid var(--border);margin:12px 0 8px;"></div>
+      <div class="report-row"><span class="report-key" style="color:var(--text2);">Wrote off</span><span class="report-val" style="color:var(--text2);">${fmt(wroteVal)}</span></div>
+      <div class="report-row"><span class="report-key" style="color:var(--text2);">Unpaid warranty</span><span class="report-val" style="color:var(--text2);">${fmt(warrantyVal)}</span></div>
     </div>
     <div class="report-section">
       <div class="report-title">Stock Take Progress</div>
