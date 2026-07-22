@@ -28013,20 +28013,47 @@ function openReport() {
 
   document.getElementById('report-body').innerHTML = `
     <div class="report-section">
-      <div class="report-title">Stock Summary</div>
-      <div class="report-row"><span class="report-key">Total parts</span><span class="report-val">${items.length}</span></div>
-      <div class="report-row"><span class="report-key">Gross stock value</span><span class="report-val">${fmt(totalVal)}</span></div>
-      <div class="report-row"><span class="report-key">Dead stock</span><span class="report-val red">− ${fmt(deadVal)} (${deadItems.length} items)</span></div>
-      <div class="report-row"><span class="report-key">Paid/Claimed</span><span class="report-val red">− ${fmt(paidVal)} (${paidItems.length} items)</span></div>
-      <div class="report-row"><span class="report-key" style="font-weight:700;color:var(--text);">Net good stock value</span><span class="report-val green" style="font-size:16px;">${fmt(netVal)}</span></div>
-      <div class="report-row"><span class="report-key">Out of stock</span><span class="report-val red">${outItems.length} items</span></div>
-      <div style="border-top:1px solid var(--border);margin:12px 0 8px;"></div>
-      <div class="report-row"><span class="report-key" style="color:var(--text2);">Wrote off</span><span class="report-val" style="color:var(--text2);">${fmt(wroteVal)}</span></div>
-      <div class="report-row"><span class="report-key" style="color:var(--text2);">Unpaid warranty</span><span class="report-val" style="color:var(--text2);">${fmt(warrantyVal)}</span></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
+        <div style="background:var(--surface2);border-radius:10px;padding:14px;">
+          <div style="font-size:12px;color:var(--text2);margin-bottom:4px;">Total parts</div>
+          <div style="font-size:22px;font-weight:700;color:var(--text);">${items.length.toLocaleString()}</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:10px;padding:14px;">
+          <div style="font-size:12px;color:var(--text2);margin-bottom:4px;">Counted</div>
+          <div style="font-size:22px;font-weight:700;color:var(--green);">${counted.length.toLocaleString()} <span style="font-size:13px;font-weight:400;color:var(--text2);">(${pct}%)</span></div>
+        </div>
+      </div>
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px;">
+          <span style="font-size:13px;color:var(--text2);">Gross stock value</span>
+          <span style="font-size:17px;font-weight:700;color:var(--text);">${fmt(totalVal)}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;padding:8px 0;border-top:1px solid var(--border);">
+          <span style="font-size:13px;color:var(--text2);">Dead stock <span style="font-size:11px;color:var(--text3);">(${deadItems.length})</span></span>
+          <span style="font-size:13px;font-weight:600;color:var(--red);">− ${fmt(deadVal)}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;padding:8px 0;border-top:1px solid var(--border);">
+          <span style="font-size:13px;color:var(--text2);">Paid / claimed <span style="font-size:11px;color:var(--text3);">(${paidItems.length})</span></span>
+          <span style="font-size:13px;font-weight:600;color:var(--red);">− ${fmt(paidVal)}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;padding:12px 0 0;border-top:2px solid var(--border-md);margin-top:4px;">
+          <span style="font-size:14px;font-weight:700;color:var(--text);">Net good stock value</span>
+          <span style="font-size:20px;font-weight:700;color:var(--green);">${fmt(netVal)}</span>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
+        <div style="background:var(--surface2);border-radius:10px;padding:14px;">
+          <div style="font-size:12px;color:var(--text2);margin-bottom:4px;">Wrote off</div>
+          <div style="font-size:17px;font-weight:700;color:var(--text);">${fmt(wroteVal)}</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:10px;padding:14px;">
+          <div style="font-size:12px;color:var(--text2);margin-bottom:4px;">Unpaid warranty</div>
+          <div style="font-size:17px;font-weight:700;color:var(--text);">${fmt(warrantyVal)}</div>
+        </div>
+      </div>
     </div>
     <div class="report-section">
-      <div class="report-title">Stock Take Progress</div>
-      <div class="report-row"><span class="report-key">Counted</span><span class="report-val green">${counted.length} of ${items.length} (${pct}%)</span></div>
+      <div class="report-title">Discrepancies</div>
       <div class="report-row"><span class="report-key">Discrepancies found</span><span class="report-val ${discos.length?'amber':'green'}">${discos.length} items</span></div>
       ${discos.length?`<div class="report-row"><span class="report-key">Top discrepancies</span><span class="report-val" style="font-size:12px;text-align:right;">${discos.slice(0,3).map(p=>`${p.sku}: ${p.qty}→${displayCounted(p)}`).join('<br>')}</span></div>`:''}
     </div>
