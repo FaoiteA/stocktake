@@ -106,32 +106,6 @@ body{font-family:'DM Sans',sans-serif;color:var(--text);display:flex;flex-direct
 .vstat-val.amber{color:var(--amber);}
 .vstat-val.red{color:var(--red);}
 .vstat-val.purple{color:var(--purple);}
-/* Home stats — redesigned card layout */
-.home-stats{padding:12px;display:flex;flex-direction:column;gap:10px;background:var(--bg);border-bottom:1px solid var(--border);flex-shrink:0;}
-.hs-row{display:grid;gap:10px;}
-.hs-row-2{grid-template-columns:1fr 1fr;}
-.hs-row-3{grid-template-columns:1fr 1fr 1fr;}
-.hs-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;}
-.hs-card.click{cursor:pointer;transition:background 0.15s,border-color 0.15s;}
-.hs-card.click:hover{background:var(--surface2);border-color:var(--border-md);}
-.hs-lbl{font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;color:var(--text3);margin-bottom:6px;}
-.hs-val{font-size:20px;font-weight:700;color:var(--text);letter-spacing:-0.3px;line-height:1.1;}
-.hs-val.green{color:var(--green);}
-.hs-val.red{color:var(--red);}
-.hs-val.amber{color:var(--amber);}
-.hs-hero{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--green);border-radius:12px;padding:18px 20px;}
-.hs-hero-lbl{font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;color:var(--text3);}
-.hs-hero-val{font-size:32px;font-weight:700;color:var(--green);letter-spacing:-0.5px;line-height:1.1;margin-top:6px;}
-.hs-hero-sub{font-size:11px;color:var(--text3);margin-top:8px;}
-.hs-calc{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:9px;}
-.hs-calc-row{display:flex;justify-content:space-between;align-items:center;font-size:13px;}
-.hs-calc-lbl{color:var(--text2);}
-.hs-calc-lbl small{font-size:11px;color:var(--text3);margin-left:4px;}
-.hs-calc-val{font-weight:600;color:var(--text);font-variant-numeric:tabular-nums;}
-.hs-calc-val.red{color:var(--red);}
-.hs-prog{width:100%;height:4px;background:var(--border);border-radius:2px;margin-top:8px;overflow:hidden;}
-.hs-prog-fill{height:100%;background:var(--green);border-radius:2px;transition:width 0.3s,background 0.3s;}
-.hs-edit{font-size:10px;color:var(--text3);margin-left:5px;opacity:0.6;}
 
 /* Tabs */
 .tabs{display:flex;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;overflow-x:auto;}
@@ -527,61 +501,17 @@ CREATE TRIGGER stock_items_updated_at
 
   <div class="sync-bar" id="sync-bar">Syncing…</div>
 
-  <div class="home-stats">
-    <!-- Row 1: Two compact KPIs -->
-    <div class="hs-row hs-row-2">
-      <div class="hs-card">
-        <div class="hs-lbl">Total Parts</div>
-        <div class="hs-val" id="vs-total">0</div>
-      </div>
-      <div class="hs-card click" onclick="openProgress()" title="View progress by location">
-        <div class="hs-lbl">Counted</div>
-        <div class="hs-val" id="vs-counted">0%</div>
-        <div class="hs-prog"><div class="hs-prog-fill" id="vs-prog" style="width:0%"></div></div>
-      </div>
-    </div>
-
-    <!-- Row 2: Hero — Net Good Stock Value -->
-    <div class="hs-hero" title="Stock Value = Gross Total − Dead Stock − Paid/Claimed">
-      <div class="hs-hero-lbl">Net Good Stock Value</div>
-      <div class="hs-hero-val" id="vs-value">€0</div>
-      <div class="hs-hero-sub">After dead stock and paid/claimed deductions</div>
-    </div>
-
-    <!-- Row 3: Calculation breakdown -->
-    <div class="hs-calc">
-      <div class="hs-calc-row">
-        <span class="hs-calc-lbl">Gross Stock Value</span>
-        <span class="hs-calc-val" id="vs-gross">€0</span>
-      </div>
-      <div class="hs-calc-row">
-        <span class="hs-calc-lbl">Dead Stock</span>
-        <span class="hs-calc-val red">− <span id="vs-dead">€0</span></span>
-      </div>
-      <div class="hs-calc-row">
-        <span class="hs-calc-lbl">Paid / Claimed</span>
-        <span class="hs-calc-val red">− <span id="vs-paid">€0</span></span>
-      </div>
-    </div>
-
-    <!-- Row 4: Secondary informational tiles -->
-    <div class="hs-row hs-row-3">
-      <div class="hs-card">
-        <div class="hs-lbl">Out of Stock</div>
-        <div class="hs-val" id="vs-out">0</div>
-      </div>
-      <div class="hs-card click" onclick="openManualStat('wrote')" title="Click to edit">
-        <div class="hs-lbl">Wrote Off<span class="hs-edit">edit</span></div>
-        <div class="hs-val" id="vs-wrote">€0</div>
-      </div>
-      <div class="hs-card click" onclick="openManualStat('warranty')" title="Click to edit">
-        <div class="hs-lbl">Warranty<span class="hs-edit">edit</span></div>
-        <div class="hs-val" id="vs-warranty">€0</div>
-      </div>
-    </div>
-
-    <!-- Hidden but preserved for functionality -->
-    <div id="vs-low-wrap" style="display:none;"><span id="vs-low">0</span></div>
+  <div class="value-strip">
+    <div class="vstat"><div class="vstat-lbl">Parts</div><div class="vstat-val" id="vs-total">1380</div></div>
+    <div class="vstat" title="Stock Value = Total Stock - Dead Stock - Paid/Claimed"><div class="vstat-lbl">Stock Value <span style="opacity:0.5;font-size:10px;">ⓘ</span></div><div class="vstat-val green" id="vs-value">€2,431</div></div>
+    <div class="vstat"><div class="vstat-lbl">Out of Stock</div><div class="vstat-val red" id="vs-out">1339</div></div>
+    <div class="vstat" style="display:none" id="vs-low-wrap"><div class="vstat-lbl">Low Stock</div><div class="vstat-val amber" id="vs-low">0</div></div>
+    <div class="vstat" onclick="openProgress()" style="cursor:pointer;" title="View progress by location"><div class="vstat-lbl">Counted</div><div class="vstat-val amber" id="vs-counted">0%</div><div class="prog-bar"><div class="prog-fill" id="vs-prog" style="width:0%"></div></div></div>
+    <div class="vstat"><div class="vstat-lbl">Dead Stock</div><div class="vstat-val red" id="vs-dead">€0</div></div>
+    <div class="vstat"><div class="vstat-lbl">Paid/Claimed</div><div class="vstat-val green" id="vs-paid">€0</div></div>
+    <div class="vstat" onclick="openManualStat('wrote')" style="cursor:pointer" title="Click to edit"><div class="vstat-lbl">Wrote Off ✏️</div><div class="vstat-val amber" id="vs-wrote">€0</div></div>
+    <div class="vstat" onclick="openManualStat('warranty')" style="cursor:pointer" title="Click to edit"><div class="vstat-lbl">Unpaid Warranty ✏️</div><div class="vstat-val amber" id="vs-warranty">€0</div></div>
+    <div class="vstat" title="Total Stock Value (gross) = sum of all stock and adjustments before deductions"><div class="vstat-lbl">Gross Total <span style="opacity:0.5;font-size:10px;">ⓘ</span></div><div class="vstat-val" id="vs-gross">€0</div></div>
   </div>
 
   <div class="tabs">
@@ -26514,7 +26444,7 @@ function render() {
   document.getElementById('vs-low').textContent = lowCount;
   document.getElementById('vs-counted').textContent = pct + '%';
   var progEl = document.getElementById('vs-prog'); if (progEl) progEl.style.width = pct + '%';
-  var countedEl = document.getElementById('vs-counted'); if (countedEl) countedEl.className = 'hs-val ' + (pct >= 100 ? 'green' : 'amber');
+  var countedEl = document.getElementById('vs-counted'); if (countedEl) countedEl.className = 'vstat-val ' + (pct >= 100 ? 'green' : 'amber');
   document.getElementById('vs-dead').textContent = fmt(deadVal);
   document.getElementById('vs-paid').textContent = fmt(paidVal);
   document.getElementById('vs-wrote').textContent = fmt(wroteVal);
