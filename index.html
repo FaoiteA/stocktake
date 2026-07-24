@@ -26071,13 +26071,8 @@ async function applyAction(action, reverse) {
     if (!p) return;
     p.qty = qty;
     if (window.viewMode === 'session' && activeSessionId) {
-      const s = sessions.find(x => x.id === activeSessionId);
-      if (s) {
-        s.snapshot = items.map(p => ({...p}));
-        showSync();
-        await sb.from('stock_sessions').update({ snapshot: s.snapshot }).eq('id', activeSessionId);
-        hideSync();
-      }
+      // Fix: per-item save with version check (prevents stale-tab overwrites)
+      await saveSessionItem(action.id);
     } else {
       showSync();
       await sb.from('stock_items').update({ qty }).eq('id', action.id);
@@ -26089,32 +26084,43 @@ async function applyAction(action, reverse) {
     const p = items.find(x => x.id === action.id);
     if (!p) return;
     p[action.field] = value;
-    showSync();
-    await sb.from('stock_items').update({ [action.field]: value }).eq('id', action.id);
-    hideSync();
+    if (window.viewMode === 'session' && activeSessionId) {
+      // Fix: persist to session snapshot instead of live stock_items
+      await saveSessionItem(action.id);
+    } else {
+      showSync();
+      await sb.from('stock_items').update({ [action.field]: value }).eq('id', action.id);
+      hideSync();
+    }
     render();
   } else if (action.type === 'edit') {
     const data = reverse ? action.prevItem : action.newData;
-    showSync();
-    await sb.from('stock_items').update(data).eq('id', action.id);
-    hideSync();
+    // Update local items first so saveSessionItem picks up the new data
     const i = items.findIndex(x => x.id === action.id);
     if (i !== -1) items[i] = {...items[i], ...data};
+    if (window.viewMode === 'session' && activeSessionId) {
+      // Fix: persist to session snapshot instead of live stock_items
+      await saveSessionItem(action.id);
+    } else {
+      showSync();
+      await sb.from('stock_items').update(data).eq('id', action.id);
+      hideSync();
+    }
     render();
   } else if (action.type === 'reset') {
     const qtys = reverse ? action.prevQtys : action.newQtys;
-    if (window.viewMode !== 'session') {
+    // Update local memory first
+    qtys.forEach(x => { const p = items.find(q => q.id === x.id); if (p) p.qty = x.qty; });
+    if (window.viewMode === 'session' && activeSessionId) {
+      // Fix: persist with version check (was previously local-only, silently lost on next poll)
+      await saveSessionSnapshot();
+    } else {
       showSync();
       for (let i = 0; i < qtys.length; i += 100) {
         const batch = qtys.slice(i, i+100);
         await Promise.all(batch.map(x => sb.from('stock_items').update({ qty: x.qty }).eq('id', x.id)));
       }
       hideSync();
-    }
-    qtys.forEach(x => { const p = items.find(q => q.id === x.id); if (p) p.qty = x.qty; });
-    if (window.viewMode === 'session' && activeSessionId) {
-      const s = sessions.find(x => x.id === activeSessionId);
-      if (s) s.snapshot = items.map(p => ({...p}));
     }
     render();
   }
