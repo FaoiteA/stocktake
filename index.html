@@ -26683,10 +26683,9 @@ function render() {
         </div>
       </div>
       <div class="part-right">
-        ${badge}
+        <div style="display:flex;gap:6px;align-items:center;">${badge}<button class="cart-btn ${orderWatchlist.has(String(p.sku||'').trim())?'active':''}" title="Add to stock order list" onclick="event.stopPropagation();toggleOrderWatch('${esc(p.sku)}',this)"><svg viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg></button></div>
         <div style="display:flex;gap:8px;align-items:center;">${window.viewMode==='session'?`<label class="sys-chk" title="Mark counted" onclick="event.stopPropagation()"><input type="checkbox" ${p.manually_counted?'checked':''} onchange="quickCount('${p.id}')"/><span>Count</span></label>`:''}
-        ${window.viewMode==='session'?`<label class="sys-chk" title="System count" onclick="event.stopPropagation()"><input type="checkbox" ${p.system_counted?'checked':''} onchange="toggleSystemCount('${p.id}',this.checked)"/><span>S</span></label>`:''}
-        <button class="cart-btn ${orderWatchlist.has(String(p.sku||'').trim())?'active':''}" title="Add to stock order list" onclick="event.stopPropagation();toggleOrderWatch('${esc(p.sku)}',this)"><svg viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3h2l2 12h11l2-8H6M9 21a1 1 0 100-2 1 1 0 000 2zM18 21a1 1 0 100-2 1 1 0 000 2z"/></svg></button></div>        
+        ${window.viewMode==='session'?`<label class="sys-chk" title="System count" onclick="event.stopPropagation()"><input type="checkbox" ${p.system_counted?'checked':''} onchange="toggleSystemCount('${p.id}',this.checked)"/><span>S</span></label>`:''}</div>        
         <div class="inline-qty">
           <button class="inline-btn" onclick="event.stopPropagation();inlineAdj('${p.id}',-1)">−</button>
           <span class="part-qty" id="iqty-${p.id}" onclick="event.stopPropagation();editQtyInline('${p.id}')" style="cursor:pointer;">${p.qty}</span>
