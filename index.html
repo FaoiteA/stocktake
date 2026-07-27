@@ -225,6 +225,10 @@ body{font-family:'DM Sans',sans-serif;color:var(--text);display:flex;flex-direct
 .part-qty{font-size:20px;font-weight:700;color:var(--text);letter-spacing:-0.5px;}
 .inline-qty{display:flex;align-items:center;gap:6px;flex-shrink:0;}
 .inline-btn{width:30px;height:30px;border-radius:8px;border:1px solid var(--border-md);background:var(--bg2);color:var(--text);font-size:18px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;font-weight:300;-webkit-user-select:none;user-select:none;}
+.cart-btn{width:30px;height:30px;border-radius:8px;border:1px solid var(--border-md);background:var(--bg2);color:var(--text3);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:all 0.15s;-webkit-user-select:none;user-select:none;}
+.cart-btn:active{background:var(--surface2);}
+.cart-btn.active{background:rgba(245,158,11,0.18);border-color:var(--amber);color:var(--amber);}
+.cart-btn svg{width:16px;height:16px;stroke:currentColor;stroke-width:1.8;fill:none;pointer-events:none;}
 .inline-btn:active{background:var(--surface2);}
 .badge{display:inline-flex;font-size:10px;font-weight:600;padding:2px 7px;border-radius:99px;white-space:nowrap;}
 .badge-ok{background:var(--green-bg);color:var(--green);}
@@ -25885,6 +25889,7 @@ CREATE TRIGGER stock_items_updated_at
 <script>
 const CFG_KEY = 'stocktake_cfg';
 let sb, currentUser, items = [], tab = 'all', editId = null, parsedRows = [];
+let orderWatchlist = new Set();
 let snapshotVersion = 0;
 let cameraScanner = null, scanMode = false, scanBuffer = '', scanTimer = null;
 let locFilter = null;
@@ -26294,6 +26299,7 @@ async function showApp() {
   document.getElementById('loading-txt').textContent = 'Loading stock…';
   show('loading-overlay');
   await loadItems();
+  await loadWatchlist();
   await loadManualStatValuesFromSupabase();
   // Restore active session from Supabase
   const { data: setting } = await sb.from('app_settings').select('value').eq('key', 'active_session_id').single();
@@ -26538,6 +26544,34 @@ function getChainSkus(p) {
 
 function hasDisco(p) { return p.counted_qty !== null && p.counted_qty !== p.qty; }
 
+// ─── Order watchlist ─────────────────────────────────────────────────────────
+async function loadWatchlist() {
+  try {
+    const { data, error } = await sb.from('order_watchlist').select('sku');
+    if (error) { console.error('loadWatchlist:', error); return; }
+    orderWatchlist = new Set((data || []).map(r => String(r.sku||'').trim()).filter(Boolean));
+  } catch (e) { console.error('loadWatchlist:', e); }
+}
+
+async function toggleOrderWatch(sku, btnEl) {
+  const key = String(sku||'').trim();
+  if (!key) return;
+  const isOn = orderWatchlist.has(key);
+  // Optimistic UI
+  if (btnEl) btnEl.classList.toggle('active', !isOn);
+  if (isOn) {
+    orderWatchlist.delete(key);
+    const { error } = await sb.from('order_watchlist').delete().eq('sku', key);
+    if (error) { orderWatchlist.add(key); if (btnEl) btnEl.classList.add('active'); toast('Failed to remove: ' + error.message); return; }
+    toast('Removed from stock order list');
+  } else {
+    orderWatchlist.add(key);
+    const { error } = await sb.from('order_watchlist').insert({ sku: key, added_by: (currentUser||{}).email || 'unknown' });
+    if (error) { orderWatchlist.delete(key); if (btnEl) btnEl.classList.remove('active'); toast('Failed to add: ' + error.message); return; }
+    toast('Added to stock order list');
+  }
+}
+
 function render() {
   const q = (document.getElementById('search').value || '').toLowerCase();
   let filtered = items.filter(p => {
@@ -26651,7 +26685,8 @@ function render() {
       <div class="part-right">
         ${badge}
         <div style="display:flex;gap:8px;align-items:center;">${window.viewMode==='session'?`<label class="sys-chk" title="Mark counted" onclick="event.stopPropagation()"><input type="checkbox" ${p.manually_counted?'checked':''} onchange="quickCount('${p.id}')"/><span>Count</span></label>`:''}
-        ${window.viewMode==='session'?`<label class="sys-chk" title="System count" onclick="event.stopPropagation()"><input type="checkbox" ${p.system_counted?'checked':''} onchange="toggleSystemCount('${p.id}',this.checked)"/><span>S</span></label>`:''}</div>        
+        ${window.viewMode==='session'?`<label class="sys-chk" title="System count" onclick="event.stopPropagation()"><input type="checkbox" ${p.system_counted?'checked':''} onchange="toggleSystemCount('${p.id}',this.checked)"/><span>S</span></label>`:''}
+        <button class="cart-btn ${orderWatchlist.has(String(p.sku||'').trim())?'active':''}" title="Add to stock order list" onclick="event.stopPropagation();toggleOrderWatch('${esc(p.sku)}',this)"><svg viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3h2l2 12h11l2-8H6M9 21a1 1 0 100-2 1 1 0 000 2zM18 21a1 1 0 100-2 1 1 0 000 2z"/></svg></button></div>        
         <div class="inline-qty">
           <button class="inline-btn" onclick="event.stopPropagation();inlineAdj('${p.id}',-1)">−</button>
           <span class="part-qty" id="iqty-${p.id}" onclick="event.stopPropagation();editQtyInline('${p.id}')" style="cursor:pointer;">${p.qty}</span>
