@@ -26734,7 +26734,7 @@ async function openOrderList() {
   document.getElementById("order-list-sheet").classList.add("open");
   // Fetch full watchlist rows including qty_to_order and notes
   try {
-    const { data, error } = await sb.from("order_watchlist").select("sku, qty_to_order, notes, added_at").order("added_at", { ascending: false });
+    const { data, error } = await sb.from("order_watchlist").select("sku, qty_to_order, min_qty, notes, added_at").order("added_at", { ascending: false });
     if (error) throw error;
     orderWatchlistRows = data || [];
   } catch (e) {
@@ -26766,7 +26766,7 @@ function renderOrderList() {
     return {
       sku: sku, name: p.name || "", location: p.location || "", area: p.area || "",
       qty: p.qty !== undefined ? p.qty : null, cost: p.cost || 0,
-      qty_to_order: w.qty_to_order || 0, notes: w.notes || "", in_stock: !!p.sku
+      qty_to_order: w.qty_to_order || 0, min_qty: w.min_qty || 0, notes: w.notes || "", in_stock: !!p.sku
     };
   });
   if (search) {
@@ -26779,20 +26779,39 @@ function renderOrderList() {
   var toOrderCount = rows.filter(function(r) { return r.qty_to_order > 0; }).length;
   var summary = '<div style="padding:8px 0 12px;font-size:12px;color:var(--text3);">' + orderWatchlistRows.length + ' flagged' + (toOrderCount > 0 ? ' • ' + toOrderCount + ' with qty to order' : '') + '</div>';
   body.innerHTML = summary + rows.map(function(r) {
-    var lowFlag = (r.in_stock && r.qty !== null && r.qty <= 2) ? '<span style="color:var(--amber);font-weight:600;">Low</span>' : '';
-    var qtyDisplay = r.in_stock ? (r.qty + ' in stock') : '<span style="color:var(--text3);">Not in current stock</span>';
+    // Status flags based on qty vs min
+    var belowMin = r.in_stock && r.qty !== null && r.min_qty > 0 && r.qty <= r.min_qty;
+    var outOfStock = r.in_stock && r.qty === 0;
+    var qtyColor = outOfStock ? 'var(--red)' : (belowMin ? 'var(--amber)' : 'var(--text)');
+    var statusTag = outOfStock ? '<span style="color:var(--red);font-weight:600;">Out of stock</span>'
+                      : (belowMin ? '<span style="color:var(--amber);font-weight:600;">Below min</span>' : '');
+    var qtyDisplay = r.in_stock
+      ? ('<span style="color:' + qtyColor + ';font-weight:600;">' + r.qty + '</span> in stock' + (r.min_qty > 0 ? ' • min ' + r.min_qty : ''))
+      : '<span style="color:var(--text3);">Not in current stock</span>';
     var costDisplay = r.cost ? ('€' + Number(r.cost).toFixed(2)) : '';
+    // Auto-suggest qty_to_order if below min and value is 0
+    var suggested = (belowMin && r.qty_to_order === 0 && r.min_qty > r.qty) ? (r.min_qty - r.qty) : null;
+    var suggestBtn = suggested !== null
+      ? ' <button style="padding:4px 8px;font-size:10px;background:rgba(245,158,11,0.15);border:1px solid var(--amber);color:var(--amber);border-radius:6px;cursor:pointer;" onclick="updateOrderQty(\'' + esc(r.sku) + '\',' + suggested + ')" title="Order ' + suggested + ' to reach min">+' + suggested + '</button>'
+      : '';
     return '<div style="background:var(--bg2);border-radius:10px;padding:12px;margin-bottom:8px;border:1px solid var(--border);">' +
       '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px;">' +
         '<div style="min-width:0;flex:1;"><div style="font-weight:700;font-size:13px;">' + esc(r.sku) + '</div>' +
           (r.name ? '<div style="font-size:11px;color:var(--text3);margin-top:2px;">' + esc(r.name) + '</div>' : '') +
-          '<div style="font-size:11px;color:var(--text3);margin-top:4px;">' + qtyDisplay + (costDisplay ? ' • ' + costDisplay : '') + (r.location ? ' • 📍 ' + esc(r.location) : '') + ' ' + lowFlag + '</div>' +
+          '<div style="font-size:11px;color:var(--text3);margin-top:4px;">' + qtyDisplay + (costDisplay ? ' • ' + costDisplay : '') + (r.location ? ' • 📍 ' + esc(r.location) : '') + (statusTag ? ' • ' + statusTag : '') + '</div>' +
         '</div>' +
         '<button class="btn btn-danger" style="padding:6px 10px;font-size:11px;" onclick="removeFromOrderList(\'' + esc(r.sku) + '\')">Remove</button>' +
       '</div>' +
-      '<div style="display:flex;align-items:center;gap:8px;">' +
-        '<span style="font-size:11px;color:var(--text3);flex-shrink:0;">Qty to order:</span>' +
-        '<input type="number" min="0" value="' + r.qty_to_order + '" onchange="updateOrderQty(\'' + esc(r.sku) + '\',this.value)" style="width:70px;padding:6px 8px;background:var(--surface);border:1px solid var(--border-md);border-radius:6px;color:var(--text);font-size:13px;text-align:center;"/>' +
+      '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">' +
+        '<div style="display:flex;align-items:center;gap:6px;">' +
+          '<span style="font-size:11px;color:var(--text3);">Min:</span>' +
+          '<input type="number" min="0" value="' + r.min_qty + '" onchange="updateOrderMin(\'' + esc(r.sku) + '\',this.value)" style="width:60px;padding:6px 8px;background:var(--surface);border:1px solid var(--border-md);border-radius:6px;color:var(--text);font-size:13px;text-align:center;"/>' +
+        '</div>' +
+        '<div style="display:flex;align-items:center;gap:6px;">' +
+          '<span style="font-size:11px;color:var(--text3);">Qty to order:</span>' +
+          '<input type="number" min="0" value="' + r.qty_to_order + '" onchange="updateOrderQty(\'' + esc(r.sku) + '\',this.value)" style="width:60px;padding:6px 8px;background:var(--surface);border:1px solid var(--border-md);border-radius:6px;color:var(--text);font-size:13px;text-align:center;"/>' +
+          suggestBtn +
+        '</div>' +
       '</div>' +
     '</div>';
   }).join("");
@@ -26805,6 +26824,16 @@ async function updateOrderQty(sku, val) {
   if (row) row.qty_to_order = qty;
   try {
     await sb.from("order_watchlist").update({ qty_to_order: qty }).eq("sku", sku);
+  } catch (e) { console.error(e); toast("Save failed: " + e.message); }
+  renderOrderList();
+}
+
+async function updateOrderMin(sku, val) {
+  var min = Math.max(0, parseInt(val) || 0);
+  var row = orderWatchlistRows.find(function(r) { return String(r.sku).trim() === String(sku).trim(); });
+  if (row) row.min_qty = min;
+  try {
+    await sb.from("order_watchlist").update({ min_qty: min }).eq("sku", sku);
   } catch (e) { console.error(e); toast("Save failed: " + e.message); }
   renderOrderList();
 }
