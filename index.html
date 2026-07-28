@@ -26176,6 +26176,7 @@ async function init() {
   const cfg = getConfig();
   if (!cfg) { hide('loading-overlay'); show('config-screen'); return; }
   sb = window.supabase.createClient(cfg.url, cfg.key);
+  await handlePasswordRecovery();
   const { data: { session } } = await sb.auth.getSession();
   hide('loading-overlay');
   if (session) { currentUser = session.user; await showApp(); await autoBackup(); }
@@ -26183,18 +26184,19 @@ async function init() {
 }
 
 // ── PASSWORD RECOVERY HANDLER ─────────────────────────────────────────────────
-(async function handleRecovery() {
+// (Moved into init() to avoid firing before `sb` client is created.)
+async function handlePasswordRecovery() {
   const hash = window.location.hash;
-  if (hash && hash.includes('type=recovery')) {
-    const newPw = prompt('Enter your new password (min 6 characters):');
-    if (newPw && newPw.length >= 6) {
-      const { error } = await sb.auth.updateUser({ password: newPw });
-      if (error) alert('Error: ' + error.message);
-      else alert('Password updated! You can now sign in.');
-    }
-    window.location.hash = '';
+  if (!hash || !hash.includes('type=recovery')) return;
+  if (!sb) { console.warn('Recovery hash present but sb not initialised'); return; }
+  const newPw = prompt('Enter your new password (min 6 characters):');
+  if (newPw && newPw.length >= 6) {
+    const { error } = await sb.auth.updateUser({ password: newPw });
+    if (error) alert('Error: ' + error.message);
+    else alert('Password updated! You can now sign in.');
   }
-})();
+  window.location.hash = '';
+}
 
 // ── AUTH ──────────────────────────────────────────────────────────────────────
 async function doLogin() {
@@ -26249,9 +26251,15 @@ async function doBackup() {
       from += pageSize;
     }
     // Fetch all sessions
-    const { data: sessions } = await sb.from('stock_sessions').select('*').order('created_at', { ascending: false });
+    const { data: sessions } = await sb.from('stock_sessions').select('*').order('id').range(0, 4999);
     // Fetch all settings
-    const { data: settings } = await sb.from('app_settings').select('*');
+    const { data: settings } = await sb.from('app_settings').select('*').order('key').range(0, 4999);
+    // Fetch all watchlist entries
+    const { data: watchlist } = await sb.from('order_watchlist').select('*').order('id').range(0, 4999);
+    // Fetch all saved orders
+    const { data: orders } = await sb.from('stock_orders').select('*').order('id').range(0, 4999);
+    // Fetch all pick lists
+    const { data: pickLists } = await sb.from('pick_lists').select('*').order('id').range(0, 4999);
 
     const stamp = new Date().toISOString().slice(0,16).replace(/[:T]/g,'-');
 
@@ -26261,7 +26269,10 @@ async function doBackup() {
       exported_by: currentUser && currentUser.email,
       stock_items: allItems,
       stock_sessions: sessions || [],
-      app_settings: settings || []
+      app_settings: settings || [],
+      order_watchlist: watchlist || [],
+      stock_orders: orders || [],
+      pick_lists: pickLists || []
     };
     const jsonBlob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
     const jsonUrl = URL.createObjectURL(jsonBlob);
@@ -26409,8 +26420,29 @@ async function startPolling() {
       didRender = true;
     }
 
-    // 3. Fetch manual stat values (small, cheap; just check both keys)
-    const { data: stats } = await sb.from("app_settings").select("key, value").in("key", ["manual_stat_wrote", "manual_stat_warranty"]);
+    // Fetch full watchlist SKUs on every poll (small table, cheap; also detects deletes)
+    try {
+      const { data: allWl } = await sb.from("order_watchlist").select("sku").order("id").range(0, 4999);
+      if (allWl) {
+        const newSet = new Set(allWl.map(r => String(r.sku||'').trim()).filter(Boolean));
+        // Only re-render if the set actually changed
+        let changed = newSet.size !== orderWatchlist.size;
+        if (!changed) { for (const s of newSet) { if (!orderWatchlist.has(s)) { changed = true; break; } } }
+        if (changed) {
+          orderWatchlist = newSet;
+          if (typeof updateOrderListBadge === 'function') updateOrderListBadge();
+          didRender = true;
+        }
+      }
+    } catch (e) { console.error('watchlist poll:', e); }
+
+    // 3. Fetch manual stat values every 6th poll (~30s) instead of every poll
+    window._appSetPollCount = (window._appSetPollCount || 0) + 1;
+    let stats = null;
+    if (window._appSetPollCount % 6 === 0) {
+      const r = await sb.from("app_settings").select("key, value").in("key", ["manual_stat_wrote", "manual_stat_warranty"]);
+      stats = r.data;
+    }
     if (stats) {
       stats.forEach(row => {
         const v = parseFloat(row.value) || 0;
@@ -26568,7 +26600,7 @@ function hasDisco(p) { return p.counted_qty !== null && p.counted_qty !== p.qty;
 // ─── Order watchlist ─────────────────────────────────────────────────────────
 async function loadWatchlist() {
   try {
-    const { data, error } = await sb.from('order_watchlist').select('sku');
+    const { data, error } = await sb.from('order_watchlist').select('sku').order('id').range(0, 4999);
     if (error) { console.error('loadWatchlist:', error); return; }
     orderWatchlist = new Set((data || []).map(r => String(r.sku||'').trim()).filter(Boolean));
   } catch (e) { console.error('loadWatchlist:', e); }
@@ -28362,10 +28394,13 @@ async function resetAllQty() {
     items.forEach(p => p.qty = 0);
     const s = sessions.find(x => x.id === activeSessionId);
     if (s) s.snapshot = items.map(p => ({...p}));
+    // Fix: persist to Supabase (was previously local-only, lost on refresh)
+    await saveSessionSnapshot();
     render();
     showUndo('Stock take quantities reset to zero', async () => {
       items.forEach(p => { const prev = prevQtys.find(x => x.id === p.id); if (prev) p.qty = prev.qty; });
       if (s) s.snapshot = items.map(p => ({...p}));
+      await saveSessionSnapshot();
       render(); toast('Undo — quantities restored');
     });
   } else {
@@ -28550,7 +28585,8 @@ let activePickListId = null;
 let viewingPickListId = null;
 
 async function loadPickLists() {
-  const { data, error } = await sb.from('pick_lists').select('*').order('created_at', { ascending: false });
+  const { data, error } = await sb.from('pick_lists').select('*').order('id').range(0, 4999);
+  if (data) data.sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
   if (error) { console.error(error); return; }
   pickLists = data || [];
 }
@@ -29011,7 +29047,9 @@ async function toggleViewMode() {
 }
 
 async function loadSessions() {
-  const { data, error } = await sb.from('stock_sessions').select('*').order('created_at', { ascending: false });
+  // Order by id first for stable pagination, then app sorts by created_at for display
+  const { data, error } = await sb.from('stock_sessions').select('*').order('id').range(0, 4999);
+  if (data) data.sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
   if (error) { console.error(error); return; }
   sessions = data || [];
 }
@@ -29697,11 +29735,35 @@ async function autoBackup() {
   try {
     var today = new Date().toISOString().slice(0, 10);
     if (localStorage.getItem('last_auto_backup') === today) return;
-    var si = await sb.from('stock_items').select('*');
-    var ss = await sb.from('stock_sessions').select('*').order('created_at', { ascending: false });
-    var sa = await sb.from('app_settings').select('*');
-    var backup = { exported_at: new Date().toISOString(), exported_by: (currentUser||{}).email, auto_backup: true, stock_items: si.data||[], stock_sessions: ss.data||[], app_settings: sa.data||[] };
-    await sb.from('backups').insert({ backup_date: today, created_by: (currentUser||{}).email||'unknown', data: backup });
+    // Paginate stock_items to avoid 1000-row default limit
+    var allItems = [];
+    var from = 0, pageSize = 500;
+    while (true) {
+      var page = await sb.from('stock_items').select('*').order('id').range(from, from + pageSize - 1);
+      if (page.error) throw new Error('stock_items: ' + page.error.message);
+      if (!page.data || page.data.length === 0) break;
+      allItems = allItems.concat(page.data);
+      if (page.data.length < pageSize) break;
+      from += pageSize;
+    }
+    var ss = await sb.from('stock_sessions').select('*').order('id').range(0, 4999);
+    var sa = await sb.from('app_settings').select('*').order('key').range(0, 4999);
+    var wl = await sb.from('order_watchlist').select('*').order('id').range(0, 4999);
+    var so = await sb.from('stock_orders').select('*').order('id').range(0, 4999);
+    var pl = await sb.from('pick_lists').select('*').order('id').range(0, 4999);
+    var backup = {
+      exported_at: new Date().toISOString(),
+      exported_by: (currentUser||{}).email,
+      auto_backup: true,
+      stock_items: allItems,
+      stock_sessions: ss.data||[],
+      app_settings: sa.data||[],
+      order_watchlist: wl.data||[],
+      stock_orders: so.data||[],
+      pick_lists: pl.data||[]
+    };
+    var ins = await sb.from('backups').insert({ backup_date: today, created_by: (currentUser||{}).email||'unknown', data: backup });
+    if (ins.error) throw new Error('backups insert: ' + ins.error.message);
     var cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 7);
     await sb.from('backups').delete().lt('created_at', cutoff.toISOString());
     var blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
@@ -29709,11 +29771,15 @@ async function autoBackup() {
     var a = document.createElement('a'); a.href = url; a.download = 'stocktake-backup-' + today + '.json';
     document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
     localStorage.setItem('last_auto_backup', today);
-    toast('\u2705 Daily backup saved');
-  } catch (e) { console.error('Auto backup failed:', e); }
+    toast('\u2705 Daily backup saved (' + allItems.length + ' parts)');
+  } catch (e) {
+    console.error('Auto backup failed:', e);
+    // User-visible warning: silent failures compound over time
+    toast('\u26A0 Auto backup failed: ' + (e.message||e));
+  }
 }
 
-function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 
 // Service worker disabled to prevent caching issues
 if ('serviceWorker' in navigator) { navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(r => r.unregister())); }
