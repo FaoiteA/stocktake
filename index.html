@@ -26542,7 +26542,8 @@ async function saveManualStat() {
   render();
   closeManualStat();
   showSync();
-  await sb.from('app_settings').upsert({ key: 'manual_stat_' + manualStatKey, value: String(val) });
+  const { error: msErr } = await sb.from('app_settings').upsert({ key: 'manual_stat_' + manualStatKey, value: String(val) });
+  if (msErr) { console.error('manualStat save:', msErr); toast('\u26A0 Save failed: ' + msErr.message); return; }
   hideSync();
   toast('Value saved');
 }
@@ -27705,8 +27706,9 @@ async function toggleSystemCount(id, checked) {
     await saveSessionItem(id);
   } else {
     showSync();
-    await sb.from('stock_items').update({ counted_qty: p.counted_qty, last_counted: p.last_counted }).eq('id', id);
+    const { error } = await sb.from('stock_items').update({ counted_qty: p.counted_qty, last_counted: p.last_counted }).eq('id', id);
     hideSync();
+    if (error) { console.error('toggleSystemCount:', error); toast('\u26A0 Save failed: ' + error.message); return; }
   }
   if (editId === id) renderDetailBody(p);
   render();
@@ -27723,8 +27725,13 @@ async function saveSessionSnapshot() {
   snapshotVersion++;
   s.snapshot_version = snapshotVersion;
   showSync();
-  await sb.from('stock_sessions').update({ snapshot: s.snapshot, snapshot_version: snapshotVersion }).eq('id', activeSessionId);
+  const { error } = await sb.from('stock_sessions').update({ snapshot: s.snapshot, snapshot_version: snapshotVersion }).eq('id', activeSessionId);
   hideSync();
+  if (error) {
+    console.error('saveSessionSnapshot:', error);
+    toast('\u26A0 Bulk save NOT saved: ' + error.message + '. Refresh and retry.');
+    snapshotVersion--; s.snapshot_version = snapshotVersion;
+  }
 }
 
 async function checkSnapshotVersion() {
@@ -27753,8 +27760,13 @@ async function saveSessionItem(itemId) {
   snapshotVersion++;
   s.snapshot_version = snapshotVersion;
   showSync();
-  await sb.from('stock_sessions').update({ snapshot: s.snapshot, snapshot_version: snapshotVersion }).eq('id', activeSessionId);
+  const { error } = await sb.from('stock_sessions').update({ snapshot: s.snapshot, snapshot_version: snapshotVersion }).eq('id', activeSessionId);
   hideSync();
+  if (error) {
+    console.error('saveSessionItem:', error);
+    toast('\u26A0 Count NOT saved: ' + error.message + '. Refresh and retry.');
+    snapshotVersion--; s.snapshot_version = snapshotVersion;
+  }
 }
 async function saveCounted(id) {
   const val = document.getElementById('count-input').value;
@@ -28120,7 +28132,8 @@ async function scanAdj(id, delta) {
   if (el) el.textContent = newQty;
   render(); toast(delta > 0 ? `+1 → ${newQty}` : `-1 → ${newQty}`);
   showSync();
-  await sb.from('stock_items').update({ qty: newQty }).eq('id', id);
+  const { error: adjErr } = await sb.from('stock_items').update({ qty: newQty }).eq('id', id);
+  if (adjErr) { console.error('inlineAdj:', adjErr); toast('\u26A0 Qty save failed: ' + adjErr.message); p.qty = prevQty; render(); return; }
   hideSync();
 }
 
@@ -28134,7 +28147,8 @@ async function scanSaveCount(id) {
     p.counted_qty = counted;
   p.last_counted = new Date().toISOString();
   showSync();
-  await sb.from('stock_items').update({ counted_qty: counted, last_counted: p.last_counted }).eq('id', id);
+  const { error: scErr } = await sb.from('stock_items').update({ counted_qty: counted, last_counted: p.last_counted }).eq('id', id);
+  if (scErr) { console.error('saveCounted:', scErr); toast('\u26A0 Count save failed: ' + scErr.message); return; }
   hideSync();
   closeScanResult(); render();
   toast(counted === p.qty ? '✓ Count matches' : `⚠ Discrepancy: system=${p.qty}, counted=${counted}`);
@@ -28802,7 +28816,8 @@ async function completeActivePickList() {
   if (!list) return;
   if (!confirm('Mark "' + (list.name||'') + '" as complete?')) return;
   showSync();
-  await sb.from('pick_lists').update({ completed: true }).eq('id', list.id);
+  const { error: plcErr } = await sb.from('pick_lists').update({ completed: true }).eq('id', list.id);
+  if (plcErr) { console.error('picklist complete:', plcErr); toast('\u26A0 Save failed: ' + plcErr.message); return; }
   hideSync();
   list.completed = true;
   if (activePickListId === list.id) activePickListId = null;
