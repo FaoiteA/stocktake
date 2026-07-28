@@ -563,13 +563,32 @@ CREATE TRIGGER stock_items_updated_at
       <button class="icon-btn" id="usb-btn" onclick="toggleScanMode()" title="USB Scanner">⌨️</button>
       <button class="icon-btn" onclick="resetAllQty()" title="Reset all quantities to zero">🔄</button>
       <button class="icon-btn" onclick="openPickLists()" title="Pick lists">🧺</button>
+      <button class="icon-btn" onclick="openOrderList()" title="Stock Order List" style="position:relative;"><span>🛒</span><span id="order-list-badge" style="display:none;position:absolute;top:-2px;right:-2px;background:var(--amber);color:#111;font-size:9px;font-weight:700;border-radius:8px;padding:1px 5px;min-width:14px;text-align:center;line-height:1.3;">0</span></button>
       <button class="icon-btn" onclick="doBackup()" title="Backup all data">💾</button>
       <button class="icon-btn" onclick="openPriceCheck()" title="Price Check">💱</button>
       <button class="icon-btn" onclick="doLogout()" title="Sign out">⏻</button>
     </div>
   </div>
 
-  <div class="sync-bar" id="sync-bar">Syncing…</div>
+  <div class="sheet hidden" id="order-list-sheet" style="max-height:95vh;">
+  <div class="sheet-handle"></div>
+  <div class="sheet-title" style="display:flex;justify-content:space-between;align-items:center;">
+    <span>🛒 Stock Order List</span>
+    <button class="btn btn-secondary" style="padding:6px 12px;font-size:12px;" onclick="closeOrderList()">Close</button>
+  </div>
+  <div style="padding:8px 18px 0;">
+    <input id="ol-search" type="text" class="search-input" placeholder="🔍 Search this list…" oninput="renderOrderList()" style="width:100%;"/>
+  </div>
+  <div class="sheet-body" id="ol-body">
+    <div class="empty-state"><div class="empty-icon">🛒</div><p>Loading…</p></div>
+  </div>
+  <div id="ol-footer" style="padding:12px 18px;border-top:1px solid var(--border);background:var(--surface);display:none;gap:8px;flex-shrink:0;">
+    <button class="btn btn-secondary" style="flex:1;" onclick="clearOrderList()">Clear All</button>
+    <button class="btn btn-success" style="flex:2;" onclick="createOrder()">📄 Create Order + CSV</button>
+  </div>
+</div>
+
+<div class="sync-bar" id="sync-bar">Syncing…</div>
 
   <div class="v2-kpi-wrap">
     <div class="v2-kpi v2-a">
@@ -26300,6 +26319,7 @@ async function showApp() {
   show('loading-overlay');
   await loadItems();
   await loadWatchlist();
+  updateOrderListBadge();
   await loadManualStatValuesFromSupabase();
   // Restore active session from Supabase
   const { data: setting } = await sb.from('app_settings').select('value').eq('key', 'active_session_id').single();
@@ -26570,6 +26590,7 @@ async function toggleOrderWatch(sku, btnEl) {
     if (error) { orderWatchlist.delete(key); if (btnEl) btnEl.classList.remove('active'); toast('Failed to add: ' + error.message); return; }
     toast('Added to stock order list');
   }
+  if (typeof updateOrderListBadge === 'function') updateOrderListBadge();
 }
 
 function render() {
@@ -26694,6 +26715,170 @@ function render() {
       </div>
     </div>`;
   }).join('');
+}
+
+// ─── Stock Order List sheet ─────────────────────────────────────────────────
+let orderWatchlistRows = [];
+
+function updateOrderListBadge() {
+  var badge = document.getElementById("order-list-badge");
+  if (!badge) return;
+  var n = orderWatchlist.size;
+  if (n > 0) { badge.textContent = n; badge.style.display = "inline-block"; }
+  else { badge.style.display = "none"; }
+}
+
+async function openOrderList() {
+  document.getElementById("order-list-sheet").classList.remove("hidden");
+  // Fetch full watchlist rows including qty_to_order and notes
+  try {
+    const { data, error } = await sb.from("order_watchlist").select("sku, qty_to_order, notes, added_at").order("added_at", { ascending: false });
+    if (error) throw error;
+    orderWatchlistRows = data || [];
+  } catch (e) {
+    console.error(e); toast("Failed to load list: " + e.message); orderWatchlistRows = [];
+  }
+  renderOrderList();
+}
+
+function closeOrderList() {
+  document.getElementById("order-list-sheet").classList.add("hidden");
+}
+
+function renderOrderList() {
+  var body = document.getElementById("ol-body");
+  var footer = document.getElementById("ol-footer");
+  var search = (document.getElementById("ol-search").value || "").toLowerCase().trim();
+  if (!orderWatchlistRows.length) {
+    body.innerHTML = '<div class="empty-state"><div class="empty-icon">🛒</div><p>No parts flagged.<br>Tap the bookmark on a part in Current Stock to add it.</p></div>';
+    footer.style.display = "none";
+    return;
+  }
+  // Join with items to get current stock data
+  var itemsBySku = {};
+  items.forEach(function(p) { if (p.sku) itemsBySku[String(p.sku).trim()] = p; });
+  var rows = orderWatchlistRows.map(function(w) {
+    var sku = String(w.sku||"").trim();
+    var p = itemsBySku[sku] || {};
+    return {
+      sku: sku, name: p.name || "", location: p.location || "", area: p.area || "",
+      qty: p.qty !== undefined ? p.qty : null, cost: p.cost || 0,
+      qty_to_order: w.qty_to_order || 0, notes: w.notes || "", in_stock: !!p.sku
+    };
+  });
+  if (search) {
+    rows = rows.filter(function(r) {
+      return r.sku.toLowerCase().indexOf(search) >= 0 ||
+             (r.name||"").toLowerCase().indexOf(search) >= 0 ||
+             (r.location||"").toLowerCase().indexOf(search) >= 0;
+    });
+  }
+  var toOrderCount = rows.filter(function(r) { return r.qty_to_order > 0; }).length;
+  var summary = '<div style="padding:8px 0 12px;font-size:12px;color:var(--text3);">' + orderWatchlistRows.length + ' flagged' + (toOrderCount > 0 ? ' • ' + toOrderCount + ' with qty to order' : '') + '</div>';
+  body.innerHTML = summary + rows.map(function(r) {
+    var lowFlag = (r.in_stock && r.qty !== null && r.qty <= 2) ? '<span style="color:var(--amber);font-weight:600;">Low</span>' : '';
+    var qtyDisplay = r.in_stock ? (r.qty + ' in stock') : '<span style="color:var(--text3);">Not in current stock</span>';
+    var costDisplay = r.cost ? ('€' + Number(r.cost).toFixed(2)) : '';
+    return '<div style="background:var(--bg2);border-radius:10px;padding:12px;margin-bottom:8px;border:1px solid var(--border);">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px;">' +
+        '<div style="min-width:0;flex:1;"><div style="font-weight:700;font-size:13px;">' + esc(r.sku) + '</div>' +
+          (r.name ? '<div style="font-size:11px;color:var(--text3);margin-top:2px;">' + esc(r.name) + '</div>' : '') +
+          '<div style="font-size:11px;color:var(--text3);margin-top:4px;">' + qtyDisplay + (costDisplay ? ' • ' + costDisplay : '') + (r.location ? ' • 📍 ' + esc(r.location) : '') + ' ' + lowFlag + '</div>' +
+        '</div>' +
+        '<button class="btn btn-danger" style="padding:6px 10px;font-size:11px;" onclick="removeFromOrderList(\'' + esc(r.sku) + '\')">Remove</button>' +
+      '</div>' +
+      '<div style="display:flex;align-items:center;gap:8px;">' +
+        '<span style="font-size:11px;color:var(--text3);flex-shrink:0;">Qty to order:</span>' +
+        '<input type="number" min="0" value="' + r.qty_to_order + '" onchange="updateOrderQty(\'' + esc(r.sku) + '\',this.value)" style="width:70px;padding:6px 8px;background:var(--surface);border:1px solid var(--border-md);border-radius:6px;color:var(--text);font-size:13px;text-align:center;"/>' +
+      '</div>' +
+    '</div>';
+  }).join("");
+  footer.style.display = "flex";
+}
+
+async function updateOrderQty(sku, val) {
+  var qty = Math.max(0, parseInt(val) || 0);
+  var row = orderWatchlistRows.find(function(r) { return String(r.sku).trim() === String(sku).trim(); });
+  if (row) row.qty_to_order = qty;
+  try {
+    await sb.from("order_watchlist").update({ qty_to_order: qty }).eq("sku", sku);
+  } catch (e) { console.error(e); toast("Save failed: " + e.message); }
+  renderOrderList();
+}
+
+async function removeFromOrderList(sku) {
+  try {
+    await sb.from("order_watchlist").delete().eq("sku", sku);
+    orderWatchlist.delete(sku);
+    orderWatchlistRows = orderWatchlistRows.filter(function(r) { return String(r.sku).trim() !== String(sku).trim(); });
+    updateOrderListBadge();
+    renderOrderList();
+    render();
+    toast("Removed");
+  } catch (e) { toast("Remove failed: " + e.message); }
+}
+
+async function clearOrderList() {
+  if (!confirm("Remove ALL " + orderWatchlistRows.length + " flagged parts from the list?")) return;
+  try {
+    await sb.from("order_watchlist").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+    orderWatchlist.clear();
+    orderWatchlistRows = [];
+    updateOrderListBadge();
+    renderOrderList();
+    render();
+    toast("Cleared");
+  } catch (e) { toast("Clear failed: " + e.message); }
+}
+
+async function createOrder() {
+  var itemsToOrder = orderWatchlistRows.filter(function(r) { return (r.qty_to_order || 0) > 0; });
+  if (!itemsToOrder.length) { toast("Set qty to order on at least one part first"); return; }
+  if (!confirm("Create order with " + itemsToOrder.length + " parts?\n\nOrdered parts will be removed from your list.")) return;
+  // Build enriched items with current stock info
+  var itemsBySku = {};
+  items.forEach(function(p) { if (p.sku) itemsBySku[String(p.sku).trim()] = p; });
+  var orderItems = itemsToOrder.map(function(w) {
+    var sku = String(w.sku).trim();
+    var p = itemsBySku[sku] || {};
+    return {
+      sku: sku, name: p.name || "", location: p.location || "",
+      current_qty: p.qty !== undefined ? p.qty : null,
+      cost: p.cost || 0, qty_to_order: w.qty_to_order
+    };
+  });
+  var now = new Date();
+  var orderName = "Order " + now.toISOString().slice(0,10) + " " + now.toTimeString().slice(0,5);
+  try {
+    // Save to stock_orders
+    var { error: e1 } = await sb.from("stock_orders").insert({
+      name: orderName, created_by: (currentUser||{}).email || "unknown",
+      items: orderItems, status: "pending"
+    });
+    if (e1) throw e1;
+    // Remove ordered items from watchlist
+    var orderedSkus = itemsToOrder.map(function(r) { return String(r.sku).trim(); });
+    var { error: e2 } = await sb.from("order_watchlist").delete().in("sku", orderedSkus);
+    if (e2) throw e2;
+    orderedSkus.forEach(function(s) { orderWatchlist.delete(s); });
+    orderWatchlistRows = orderWatchlistRows.filter(function(r) { return orderedSkus.indexOf(String(r.sku).trim()) < 0; });
+    // Download CSV
+    var csv = "SKU,Name,Location,Current Qty,Cost,Qty to Order\n";
+    orderItems.forEach(function(r) {
+      var cells = [r.sku, r.name, r.location, r.current_qty !== null ? r.current_qty : "", r.cost, r.qty_to_order];
+      csv += cells.map(function(c) { var s = String(c==null?"":c); return '"' + s.replace(/"/g, '""') + '"'; }).join(",") + "\n";
+    });
+    var blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url; a.download = orderName.replace(/[:/ ]/g, "-") + ".csv";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    updateOrderListBadge();
+    renderOrderList();
+    render();
+    toast("✓ Order saved and CSV downloaded");
+  } catch (e) { console.error(e); alert("Order failed: " + (e.message || e)); }
 }
 
 function setTab(t) { tab = t; render(); }
