@@ -26451,6 +26451,45 @@ async function startPolling() {
       });
     }
 
+    // Delete detection: every 6th poll (~30s), reconcile local IDs against DB.
+    // Polling above only detects new/changed rows via updated_at — deletes are invisible.
+    if (window._appSetPollCount % 6 === 0) {
+      try {
+        // stock_items: paginate IDs to handle >1000 rows
+        if (!inSession) {
+          let allIds = new Set();
+          let from = 0, pageSize = 1000;
+          while (true) {
+            const { data, error } = await sb.from('stock_items').select('id').order('id').range(from, from + pageSize - 1);
+            if (error) throw error;
+            if (!data || !data.length) break;
+            data.forEach(r => allIds.add(r.id));
+            if (data.length < pageSize) break;
+            from += pageSize;
+          }
+          const beforeLen = items.length;
+          items = items.filter(p => allIds.has(p.id));
+          if (items.length !== beforeLen) { console.log('Purged ' + (beforeLen - items.length) + ' deleted items'); didRender = true; }
+        }
+        // stock_sessions IDs
+        const { data: sessIds } = await sb.from('stock_sessions').select('id').order('id').range(0, 4999);
+        if (sessIds) {
+          const sIdSet = new Set(sessIds.map(r => r.id));
+          const beforeLen = sessions.length;
+          sessions = sessions.filter(s => sIdSet.has(s.id));
+          if (sessions.length !== beforeLen) { console.log('Purged ' + (beforeLen - sessions.length) + ' deleted sessions'); didRender = true; }
+        }
+        // pick_lists IDs
+        const { data: plIds } = await sb.from('pick_lists').select('id').order('id').range(0, 4999);
+        if (plIds && typeof pickLists !== 'undefined') {
+          const plIdSet = new Set(plIds.map(r => r.id));
+          const beforeLen = pickLists.length;
+          pickLists = pickLists.filter(l => plIdSet.has(l.id));
+          if (pickLists.length !== beforeLen) { console.log('Purged ' + (beforeLen - pickLists.length) + ' deleted pick lists'); didRender = true; }
+        }
+      } catch (e) { console.error('delete detection:', e); }
+    }
+
     if (didRender) render();
   }, 5000);
 }
