@@ -563,14 +563,15 @@ CREATE TRIGGER stock_items_updated_at
       <button class="icon-btn" id="usb-btn" onclick="toggleScanMode()" title="USB Scanner">⌨️</button>
       <button class="icon-btn" onclick="resetAllQty()" title="Reset all quantities to zero">🔄</button>
       <button class="icon-btn" onclick="openPickLists()" title="Pick lists">🧺</button>
-      <button class="icon-btn" onclick="openOrderList()" title="Stock Order List" style="position:relative;"><span>🛒</span><span id="order-list-badge" style="display:none;position:absolute;top:-2px;right:-2px;background:var(--amber);color:#111;font-size:9px;font-weight:700;border-radius:8px;padding:1px 5px;min-width:14px;text-align:center;line-height:1.3;">0</span></button>
+      <button class="icon-btn" onclick="openOrderList()" title="Stock Order List" style="position:relative;"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg><span id="order-list-badge" style="display:none;position:absolute;top:-2px;right:-2px;background:var(--amber);color:#111;font-size:9px;font-weight:700;border-radius:8px;padding:1px 5px;min-width:14px;text-align:center;line-height:1.3;">0</span></button>
       <button class="icon-btn" onclick="doBackup()" title="Backup all data">💾</button>
       <button class="icon-btn" onclick="openPriceCheck()" title="Price Check">💱</button>
       <button class="icon-btn" onclick="doLogout()" title="Sign out">⏻</button>
     </div>
   </div>
 
-  <div class="sheet hidden" id="order-list-sheet" style="max-height:95vh;">
+  <div class="sheet-overlay" id="order-list-overlay" onclick="closeOrderList()"></div>
+<div class="sheet" id="order-list-sheet" style="max-height:95vh;">
   <div class="sheet-handle"></div>
   <div class="sheet-title" style="display:flex;justify-content:space-between;align-items:center;">
     <span>🛒 Stock Order List</span>
@@ -26729,7 +26730,8 @@ function updateOrderListBadge() {
 }
 
 async function openOrderList() {
-  document.getElementById("order-list-sheet").classList.remove("hidden");
+  document.getElementById("order-list-overlay").classList.add("open");
+  document.getElementById("order-list-sheet").classList.add("open");
   // Fetch full watchlist rows including qty_to_order and notes
   try {
     const { data, error } = await sb.from("order_watchlist").select("sku, qty_to_order, notes, added_at").order("added_at", { ascending: false });
@@ -26742,7 +26744,8 @@ async function openOrderList() {
 }
 
 function closeOrderList() {
-  document.getElementById("order-list-sheet").classList.add("hidden");
+  document.getElementById("order-list-overlay").classList.remove("open");
+  document.getElementById("order-list-sheet").classList.remove("open");
 }
 
 function renderOrderList() {
