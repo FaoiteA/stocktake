@@ -562,6 +562,7 @@ CREATE TRIGGER stock_items_updated_at
       <button class="icon-btn" onclick="openCameraScanner()" title="Scan" id="cam-btn">📷</button>
       <button class="icon-btn" id="usb-btn" onclick="toggleScanMode()" title="USB Scanner">⌨️</button>
       <button class="icon-btn" onclick="resetAllQty()" title="Reset all quantities to zero">🔄</button>
+      <button class="icon-btn" onclick="openLocationQrs()" title="Location QRs">🗺️</button>
       <button class="icon-btn" onclick="openPickLists()" title="Pick lists">🧺</button>
       <button class="icon-btn" onclick="openOrderList()" title="Stock Order List" style="position:relative;"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg><span id="order-list-badge" style="display:none;position:absolute;top:-2px;right:-2px;background:var(--amber);color:#111;font-size:9px;font-weight:700;border-radius:8px;padding:1px 5px;min-width:14px;text-align:center;line-height:1.3;">0</span></button>
       <button class="icon-btn" onclick="doBackup()" title="Backup all data">💾</button>
@@ -571,6 +572,61 @@ CREATE TRIGGER stock_items_updated_at
   </div>
 
   <div class="sheet-overlay" id="order-list-overlay" onclick="closeOrderList()"></div>
+<div class="sheet-overlay" id="loc-qrs-overlay" onclick="closeLocationQrs()"></div>
+<div class="sheet" id="loc-qrs-sheet" style="max-height:95vh;">
+  <div class="sheet-handle"></div>
+  <div class="sheet-title" style="display:flex;justify-content:space-between;align-items:center;">
+    <span>🗺️ Location QR Codes</span>
+    <button class="btn btn-secondary" style="padding:6px 12px;font-size:12px;" onclick="closeLocationQrs()">Close</button>
+  </div>
+  <div style="padding:8px 18px 0;">
+    <button class="btn btn-success" style="width:100%;padding:10px;" onclick="openEditLocationQr(null)">+ New Location QR</button>
+  </div>
+  <div class="sheet-body" id="loc-qrs-body"><div class="empty-state"><div class="empty-icon">🗺️</div><p>Loading…</p></div></div>
+</div>
+<div class="sheet-overlay" id="loc-qr-edit-overlay" onclick="closeEditLocationQr()"></div>
+<div class="sheet" id="loc-qr-edit-sheet" style="max-height:95vh;">
+  <div class="sheet-handle"></div>
+  <div class="sheet-title" style="display:flex;justify-content:space-between;align-items:center;">
+    <span id="loc-qr-edit-title">New Location QR</span>
+    <button class="btn btn-secondary" style="padding:6px 12px;font-size:12px;" onclick="closeEditLocationQr()">Cancel</button>
+  </div>
+  <div class="sheet-body" style="padding:0 18px 18px;">
+    <div style="margin-bottom:12px;">
+      <label style="display:block;font-size:11px;color:var(--text3);text-transform:uppercase;margin-bottom:4px;">Display name</label>
+      <input id="loc-qr-name" type="text" class="search-input" placeholder="e.g. Shelf D" style="width:100%;"/>
+    </div>
+    <div style="margin-bottom:12px;">
+      <label style="display:block;font-size:11px;color:var(--text3);text-transform:uppercase;margin-bottom:4px;">QR code content <span style="color:var(--text3);text-transform:none;font-size:10px;">(what the QR encodes — must be unique)</span></label>
+      <input id="loc-qr-code" type="text" class="search-input" placeholder="e.g. LOC-D" style="width:100%;font-family:'DM Mono',monospace;"/>
+    </div>
+    <div style="margin-bottom:12px;">
+      <label style="display:block;font-size:11px;color:var(--text3);text-transform:uppercase;margin-bottom:4px;">Location prefixes <span style="color:var(--text3);text-transform:none;font-size:10px;">(comma-separated. Any location starting with these matches)</span></label>
+      <input id="loc-qr-prefixes" type="text" class="search-input" placeholder="e.g. D  or  001,002,003" style="width:100%;font-family:'DM Mono',monospace;" oninput="updateLocQrPreview()"/>
+      <div id="loc-qr-preview" style="margin-top:8px;padding:8px 10px;background:var(--bg2);border-radius:6px;font-size:11px;color:var(--text3);min-height:32px;">Preview will appear here</div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:16px;">
+      <button id="loc-qr-delete-btn" class="btn btn-danger" style="display:none;padding:10px;font-size:13px;" onclick="deleteLocationQrConfirm()">Delete</button>
+      <button class="btn btn-success" style="flex:1;padding:10px;" onclick="saveLocationQrForm()">Save</button>
+    </div>
+  </div>
+</div>
+<div class="sheet-overlay" id="loc-qr-print-overlay" onclick="closePrintLocationQr()"></div>
+<div class="sheet" id="loc-qr-print-sheet" style="max-height:95vh;">
+  <div class="sheet-handle"></div>
+  <div class="sheet-title" style="display:flex;justify-content:space-between;align-items:center;">
+    <span id="loc-qr-print-title">Print QR</span>
+    <button class="btn btn-secondary" style="padding:6px 12px;font-size:12px;" onclick="closePrintLocationQr()">Close</button>
+  </div>
+  <div class="sheet-body" id="loc-qr-print-body" style="text-align:center;padding:24px;"></div>
+  <div style="padding:12px 18px;border-top:1px solid var(--border);flex-shrink:0;">
+    <button class="btn btn-primary" style="width:100%;padding:12px;" onclick="printLocationQrNow()">🖨️ Print</button>
+  </div>
+</div>
+<div id="loc-filter-chip" style="display:none;padding:8px 12px;background:var(--amber-bg);border-left:3px solid var(--amber);color:var(--amber);font-size:13px;display:none;align-items:center;justify-content:space-between;gap:8px;">
+  <span>🗺️ Filtered: <span id="loc-filter-chip-name" style="font-weight:600;"></span></span>
+  <button style="background:none;border:1px solid var(--amber);color:var(--amber);padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;" onclick="clearLocPrefixFilter()">Clear</button>
+</div>
 <div class="sheet" id="order-list-sheet" style="max-height:95vh;">
   <div class="sheet-handle"></div>
   <div class="sheet-title" style="display:flex;justify-content:space-between;align-items:center;">
@@ -25905,11 +25961,15 @@ CREATE TRIGGER stock_items_updated_at
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html5-qrcode/minified/html5-qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 <script>
 const CFG_KEY = 'stocktake_cfg';
 let sb, currentUser, items = [], tab = 'all', editId = null, parsedRows = [];
 let orderWatchlist = new Set();
+let locationQrs = [];
+let locPrefixFilter = null;
+let locPrefixFilterName = "";
 let snapshotVersion = 0;
 let cameraScanner = null, scanMode = false, scanBuffer = '', scanTimer = null;
 let locFilter = null;
@@ -26331,6 +26391,7 @@ async function showApp() {
   show('loading-overlay');
   await loadItems();
   await loadWatchlist();
+  await loadLocationQrs();
   updateOrderListBadge();
   await loadManualStatValuesFromSupabase();
   // Restore active session from Supabase
@@ -26635,7 +26696,11 @@ function getChainSkus(p) {
   return Array.from(skus);
 }
 
-function hasDisco(p) { return p.counted_qty !== null && p.counted_qty !== p.qty; }
+function hasDisco(p) {
+  if (p.counted_qty === null || p.counted_qty === undefined) return false;
+  if (p.system_qty !== undefined && p.system_qty !== null) return p.counted_qty !== p.system_qty;
+  return p.counted_qty !== p.qty;
+}
 
 // ─── Order watchlist ─────────────────────────────────────────────────────────
 async function loadWatchlist() {
@@ -26680,6 +26745,17 @@ function render() {
     if (locFilter) {
       if (locFilter === 'No location') { if (p.location || p.area) return false; }
       else if (p.location !== locFilter && p.area !== locFilter) return false;
+    }
+    // Location QR prefix filter — matches any location/area starting with any prefix
+    if (locPrefixFilter && locPrefixFilter.length) {
+      const loc = String(p.location||'').trim().toUpperCase();
+      const area = String(p.area||'').trim().toUpperCase();
+      const matches = locPrefixFilter.some(pfx => {
+        const P = String(pfx).trim().toUpperCase();
+        if (!P) return false;
+        return loc.startsWith(P) || area.startsWith(P);
+      });
+      if (!matches) return false;
     }
     if (locFilter && locUncountedOnly && p.counted_qty !== null && p.counted_qty !== undefined) return false;
     if (qtyMin !== null && p.qty < qtyMin) return false;
@@ -26761,7 +26837,12 @@ function render() {
     else if (p.qty === 0) badge = `<span class="badge badge-out">Out</span>`;
     else if (p.min_qty > 0 && p.qty <= p.min_qty) badge = `<span class="badge badge-low">Low</span>`;
     if (p.paid_claimed) badge = `<span class="badge" style="background:var(--blue-bg);color:var(--blue);">Paid</span>`;
-    else if (disco) badge = `<span class="badge badge-disc">±${p.counted_qty - p.qty}</span>`;
+    else if (disco) {
+      const baseQty = (p.system_qty !== undefined && p.system_qty !== null) ? p.system_qty : p.qty;
+      const diff = p.counted_qty - baseQty;
+      const sign = diff > 0 ? '+' : '';
+      badge = `<span class="badge badge-disc">${sign}${diff}</span>`;
+    }
     else if (p.system_counted) badge = `<span class="badge" style="background:rgba(41,220,255,0.15);border-color:rgba(41,220,255,0.3);color:#29dcff;">S</span>`;
     else if (p.counted_qty !== null) badge = `<span class="badge badge-counted">✓</span>`;
     return `<div class="part-item ${cls}" onclick="openDetail('${p.id}')" oncontextmenu="openCtxMenu(event,'${p.id}')" onpointerdown="startLongPress(event,'${p.id}')" onpointerup="cancelLongPress()" onpointercancel="cancelLongPress()" onpointermove="cancelLongPress()">
@@ -26985,6 +27066,206 @@ async function createOrder() {
   } catch (e) { console.error(e); alert("Order failed: " + (e.message || e)); }
 }
 
+// ─── Location QRs ───────────────────────────────────────────────────────────
+async function loadLocationQrs() {
+  try {
+    const { data, error } = await sb.from("location_qrs").select("*").order("name").range(0, 999);
+    if (error) throw error;
+    locationQrs = data || [];
+  } catch (e) { console.error("loadLocationQrs:", e); locationQrs = []; }
+}
+
+function openLocationQrs() {
+  document.getElementById("loc-qrs-overlay").classList.add("open");
+  document.getElementById("loc-qrs-sheet").classList.add("open");
+  loadLocationQrs().then(renderLocationQrs);
+}
+
+function closeLocationQrs() {
+  document.getElementById("loc-qrs-overlay").classList.remove("open");
+  document.getElementById("loc-qrs-sheet").classList.remove("open");
+}
+
+function renderLocationQrs() {
+  const body = document.getElementById("loc-qrs-body");
+  if (!locationQrs.length) {
+    body.innerHTML = '<div class="empty-state"><div class="empty-icon">🗺️</div><p>No location QRs yet.<br>Create one to get started.</p></div>';
+    return;
+  }
+  body.innerHTML = locationQrs.map(q => {
+    const prefixes = Array.isArray(q.prefixes) ? q.prefixes : [];
+    const prefixStr = prefixes.length ? prefixes.join(", ") : "(none)";
+    return '<div style="background:var(--bg2);border-radius:10px;padding:12px;margin-bottom:8px;border:1px solid var(--border);">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px;">' +
+        '<div style="min-width:0;flex:1;"><div style="font-weight:700;font-size:14px;">' + esc(q.name) + '</div>' +
+          '<div style="font-size:11px;color:var(--text3);margin-top:2px;font-family:\'DM Mono\',monospace;">Code: ' + esc(q.code) + '</div>' +
+          '<div style="font-size:11px;color:var(--text3);margin-top:4px;">Matches: <span style="color:var(--text2);font-family:\'DM Mono\',monospace;">' + esc(prefixStr) + '</span></div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="display:flex;gap:6px;margin-top:8px;">' +
+        '<button class="btn btn-secondary" style="flex:1;padding:7px;font-size:12px;" onclick="openEditLocationQr(\'' + q.id + '\')">Edit</button>' +
+        '<button class="btn btn-primary" style="flex:1;padding:7px;font-size:12px;" onclick="openPrintLocationQr(\'' + q.id + '\')">Print</button>' +
+      '</div>' +
+    '</div>';
+  }).join("");
+}
+
+let editingLocQrId = null;
+function openEditLocationQr(id) {
+  editingLocQrId = id;
+  const q = id ? locationQrs.find(x => x.id === id) : null;
+  document.getElementById("loc-qr-edit-title").textContent = q ? "Edit Location QR" : "New Location QR";
+  document.getElementById("loc-qr-name").value = q ? (q.name||"") : "";
+  document.getElementById("loc-qr-code").value = q ? (q.code||"") : "";
+  const prefixes = q && Array.isArray(q.prefixes) ? q.prefixes : [];
+  document.getElementById("loc-qr-prefixes").value = prefixes.join(", ");
+  document.getElementById("loc-qr-delete-btn").style.display = q ? "block" : "none";
+  updateLocQrPreview();
+  document.getElementById("loc-qr-edit-overlay").classList.add("open");
+  document.getElementById("loc-qr-edit-sheet").classList.add("open");
+}
+
+function closeEditLocationQr() {
+  document.getElementById("loc-qr-edit-overlay").classList.remove("open");
+  document.getElementById("loc-qr-edit-sheet").classList.remove("open");
+  editingLocQrId = null;
+}
+
+function parsePrefixesInput(str) {
+  return String(str||"").split(",").map(s => s.trim()).filter(Boolean);
+}
+
+function updateLocQrPreview() {
+  const input = document.getElementById("loc-qr-prefixes").value;
+  const prefixes = parsePrefixesInput(input);
+  const prev = document.getElementById("loc-qr-preview");
+  if (!prefixes.length) { prev.innerHTML = '<span style="color:var(--text3);">Add prefixes to see matches…</span>'; return; }
+  const matching = new Set();
+  items.forEach(p => {
+    const loc = String(p.location||"").trim().toUpperCase();
+    const area = String(p.area||"").trim().toUpperCase();
+    for (const pfx of prefixes) {
+      const P = String(pfx).trim().toUpperCase(); if (!P) continue;
+      if (loc.startsWith(P) && loc) { matching.add(loc); }
+      if (area.startsWith(P) && area) { matching.add(area); }
+    }
+  });
+  const arr = Array.from(matching).sort();
+  const shown = arr.slice(0, 30);
+  const moreText = arr.length > 30 ? ' +' + (arr.length - 30) + ' more…' : '';
+  prev.innerHTML = '<span style="color:var(--text2);">' + arr.length + ' location' + (arr.length === 1 ? '' : 's') + ' match:</span> ' +
+    (arr.length ? shown.map(l => '<span style="display:inline-block;background:var(--surface);padding:2px 6px;border-radius:4px;margin:2px 3px 0 0;font-family:\'DM Mono\',monospace;color:var(--text);">' + esc(l) + '</span>').join('') + moreText : '<span style="color:var(--amber);">(none in current stock)</span>');
+}
+
+async function saveLocationQrForm() {
+  const name = document.getElementById("loc-qr-name").value.trim();
+  const code = document.getElementById("loc-qr-code").value.trim();
+  const prefixes = parsePrefixesInput(document.getElementById("loc-qr-prefixes").value);
+  if (!name) { toast("Enter a name"); return; }
+  if (!code) { toast("Enter QR code content"); return; }
+  if (!prefixes.length) { toast("Add at least one location prefix"); return; }
+  const payload = { code, name, prefixes, updated_at: new Date().toISOString(), created_by: (currentUser||{}).email || "unknown" };
+  try {
+    if (editingLocQrId) {
+      const { error } = await sb.from("location_qrs").update(payload).eq("id", editingLocQrId);
+      if (error) throw error;
+      toast("Updated");
+    } else {
+      const { error } = await sb.from("location_qrs").insert(payload);
+      if (error) throw error;
+      toast("Created");
+    }
+    await loadLocationQrs();
+    renderLocationQrs();
+    closeEditLocationQr();
+  } catch (e) { console.error(e); alert("Save failed: " + (e.message||e)); }
+}
+
+async function deleteLocationQrConfirm() {
+  if (!editingLocQrId) return;
+  const q = locationQrs.find(x => x.id === editingLocQrId);
+  if (!confirm("Delete location QR \"" + (q ? q.name : "") + "\"?")) return;
+  try {
+    const { error } = await sb.from("location_qrs").delete().eq("id", editingLocQrId);
+    if (error) throw error;
+    await loadLocationQrs();
+    renderLocationQrs();
+    closeEditLocationQr();
+    toast("Deleted");
+  } catch (e) { alert("Delete failed: " + (e.message||e)); }
+}
+
+let printingLocQr = null;
+function openPrintLocationQr(id) {
+  const q = locationQrs.find(x => x.id === id);
+  if (!q) return;
+  printingLocQr = q;
+  document.getElementById("loc-qr-print-title").textContent = "Print: " + q.name;
+  const body = document.getElementById("loc-qr-print-body");
+  try {
+    const qr = qrcode(0, "M");
+    qr.addData(q.code);
+    qr.make();
+    const svg = qr.createSvgTag({ scalable: true, margin: 2 });
+    body.innerHTML = '<div style="background:white;padding:16px;border-radius:12px;display:inline-block;max-width:100%;">' +
+      '<div style="width:220px;max-width:100%;margin:0 auto;">' + svg + '</div>' +
+      '<div style="color:#000;font-family:Arial,sans-serif;font-weight:700;font-size:16px;margin-top:10px;">' + esc(q.name) + '</div>' +
+      '<div style="color:#666;font-family:monospace;font-size:11px;margin-top:2px;">' + esc(q.code) + '</div>' +
+    '</div>';
+  } catch (e) { body.innerHTML = '<div style="color:var(--red);">QR generation failed: ' + esc(e.message||String(e)) + '</div>'; }
+  document.getElementById("loc-qr-print-overlay").classList.add("open");
+  document.getElementById("loc-qr-print-sheet").classList.add("open");
+}
+
+function closePrintLocationQr() {
+  document.getElementById("loc-qr-print-overlay").classList.remove("open");
+  document.getElementById("loc-qr-print-sheet").classList.remove("open");
+  printingLocQr = null;
+}
+
+function printLocationQrNow() {
+  if (!printingLocQr) return;
+  const q = printingLocQr;
+  try {
+    const qr = qrcode(0, "M");
+    qr.addData(q.code);
+    qr.make();
+    const svg = qr.createSvgTag({ scalable: true, margin: 2 });
+    const w = window.open("", "_blank");
+    if (!w) { alert("Popup blocked. Allow popups to print."); return; }
+    w.document.write('<!doctype html><html><head><title>QR: ' + q.name + '</title>' +
+      '<style>body{margin:0;padding:20mm;font-family:Arial,sans-serif;text-align:center;}' +
+      '.card{display:inline-block;padding:10mm;border:1px solid #999;border-radius:8px;}' +
+      '.qr{width:60mm;margin:0 auto;}' +
+      '.n{font-size:18pt;font-weight:700;margin-top:6mm;}' +
+      '.c{font-family:monospace;font-size:10pt;color:#666;margin-top:2mm;}' +
+      '@media print{body{padding:10mm;}}</style></head><body>' +
+      '<div class="card"><div class="qr">' + svg + '</div>' +
+      '<div class="n">' + q.name.replace(/</g, "&lt;") + '</div>' +
+      '<div class="c">' + q.code.replace(/</g, "&lt;") + '</div></div>' +
+      '<script>setTimeout(function(){window.print();},400);<' + '/script></body></html>');
+    w.document.close();
+  } catch (e) { alert("Print failed: " + (e.message||e)); }
+}
+
+function applyLocPrefixFilter(name, prefixes) {
+  locPrefixFilter = Array.isArray(prefixes) ? prefixes.slice() : [];
+  locPrefixFilterName = name || "";
+  const chip = document.getElementById("loc-filter-chip");
+  const nm = document.getElementById("loc-filter-chip-name");
+  if (chip && nm) { nm.textContent = name; chip.style.display = "flex"; }
+  render();
+  toast("🗺️ Filtered to " + name);
+}
+
+function clearLocPrefixFilter() {
+  locPrefixFilter = null;
+  locPrefixFilterName = "";
+  const chip = document.getElementById("loc-filter-chip");
+  if (chip) chip.style.display = "none";
+  render();
+}
+
 function setTab(t) { tab = t; render(); }
 
 // ── LOCATION FILTER ───────────────────────────────────────────────────────────
@@ -27148,7 +27429,7 @@ function renderDetailBody(p) {
       <div class="detail-section-title">Stock Take</div>
       <div class="detail-row">
         <span class="detail-key">System qty</span>
-        <span class="detail-val">${p.qty}</span>
+        <span class="detail-val">${(p.system_qty !== undefined && p.system_qty !== null) ? p.system_qty : p.qty}</span>
       </div>
       ${p.counted_qty!==null?`<div class="detail-row">
         <span class="detail-key">Counted qty</span>
@@ -28096,6 +28377,14 @@ function toggleScanMode() {
 
 function handleScannedSku(raw) {
   if (!raw) return;
+  // First check: is this a known location QR code?
+  const trimmed = String(raw).trim();
+  const locMatch = locationQrs.find(q => String(q.code||'').trim() === trimmed);
+  if (locMatch) {
+    if (navigator.vibrate) navigator.vibrate(120);
+    applyLocPrefixFilter(locMatch.name, locMatch.prefixes || []);
+    return;
+  }
   let sku = raw.trim();
   // GS1 with brackets: extract after (P)
   const gs1Match = sku.match(/\(P\)\s*([^(\s]+)/i);
@@ -29226,7 +29515,8 @@ async function saveSession() {
   const wroteVal = wroteValManual || wroteValCalc;
   const outCount = items.filter(p=>p.qty===0).length;
   // Save snapshot of current stock with quantities reset to zero for counting
-  const snapshot = items.map(p => ({ id:p.id, sku:p.sku, name:p.name, qty:0, cost:p.cost, location:p.location, area:p.area, dead_stock:p.dead_stock, wrote_off:p.wrote_off, paid_claimed:p.paid_claimed, counted_qty:null, system_counted:false, manually_counted:false, min_qty:p.min_qty||0, change_log:[] }));
+  // Store original qty as system_qty for later discrepancy comparison
+  const snapshot = items.map(p => ({ id:p.id, sku:p.sku, name:p.name, qty:0, system_qty:p.qty||0, cost:p.cost, location:p.location, area:p.area, dead_stock:p.dead_stock, wrote_off:p.wrote_off, paid_claimed:p.paid_claimed, counted_qty:null, system_counted:false, manually_counted:false, min_qty:p.min_qty||0, change_log:[] }));
   const sessionData = {
     name,
     notes: document.getElementById('ns-notes').value.trim(),
