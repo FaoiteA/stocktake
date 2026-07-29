@@ -28375,16 +28375,23 @@ function toggleScanMode() {
   toast(scanMode ? 'USB scanner mode on' : 'USB scanner mode off');
 }
 
-function handleScannedSku(raw) {
+async function handleScannedSku(raw) {
   if (!raw) return;
   // First check: is this a known location QR code?
-  const trimmed = String(raw).trim();
-  const locMatch = locationQrs.find(q => String(q.code||'').trim() === trimmed);
+  // Refresh locationQrs from DB — QRs added on other devices won't be in memory yet.
+  const trimmedRaw = String(raw).trim();
+  const trimmedLower = trimmedRaw.toLowerCase();
+  try {
+    const { data: freshQrs } = await sb.from('location_qrs').select('*').range(0, 999);
+    if (Array.isArray(freshQrs)) locationQrs = freshQrs;
+  } catch (e) { console.error('scan/refresh QRs:', e); }
+  const locMatch = locationQrs.find(q => String(q.code||'').trim().toLowerCase() === trimmedLower);
   if (locMatch) {
     if (navigator.vibrate) navigator.vibrate(120);
     applyLocPrefixFilter(locMatch.name, locMatch.prefixes || []);
     return;
   }
+  console.log('Scan not matched as location QR. Scanned:', trimmedRaw, '- Available codes:', locationQrs.map(q => q.code));
   let sku = raw.trim();
   // GS1 with brackets: extract after (P)
   const gs1Match = sku.match(/\(P\)\s*([^(\s]+)/i);
