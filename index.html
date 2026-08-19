@@ -27035,19 +27035,15 @@ async function createOrder() {
   var now = new Date();
   var orderName = "Order " + now.toISOString().slice(0,10) + " " + now.toTimeString().slice(0,5);
   try {
-    // Save to stock_orders
+    // Step 1: Save the order to stock_orders (the only truly critical step)
     var { error: e1 } = await sb.from("stock_orders").insert({
       name: orderName, created_by: (currentUser||{}).email || "unknown",
       items: orderItems, status: "pending"
     });
-    if (e1) throw e1;
-    // Remove ordered items from watchlist
-    var orderedSkus = itemsToOrder.map(function(r) { return String(r.sku).trim(); });
-    var { error: e2 } = await sb.from("order_watchlist").delete().in("sku", orderedSkus);
-    if (e2) throw e2;
-    orderedSkus.forEach(function(s) { orderWatchlist.delete(s); });
-    orderWatchlistRows = orderWatchlistRows.filter(function(r) { return orderedSkus.indexOf(String(r.sku).trim()) < 0; });
-    // Download CSV
+    if (e1) { alert("Order failed: could not save.\n\n" + e1.message); return; }
+
+    // Step 2: Download the CSV. Always happens after order is saved,
+    // even if watchlist cleanup fails later.
     var csv = "SKU,Name,Location,Current Qty,Cost,Qty to Order\n";
     orderItems.forEach(function(r) {
       var cells = [r.sku, r.name, r.location, r.current_qty !== null ? r.current_qty : "", r.cost, r.qty_to_order];
@@ -27059,6 +27055,18 @@ async function createOrder() {
     a.href = url; a.download = orderName.replace(/[:/ ]/g, "-") + ".csv";
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
+
+    // Step 3: Try to remove ordered items from watchlist. If this fails, warn the user
+    // but do NOT roll back the order - the order is real and the CSV is downloaded.
+    var orderedSkus = itemsToOrder.map(function(r) { return String(r.sku).trim(); });
+    var { error: e2 } = await sb.from("order_watchlist").delete().in("sku", orderedSkus);
+    if (e2) {
+      console.error("watchlist cleanup after order:", e2);
+      alert("✓ Order saved and CSV downloaded.\n\n⚠ Could NOT clear those items from your watchlist:\n" + e2.message + "\n\nRemove them manually to avoid re-ordering.");
+      return;
+    }
+    orderedSkus.forEach(function(s) { orderWatchlist.delete(s); });
+    orderWatchlistRows = orderWatchlistRows.filter(function(r) { return orderedSkus.indexOf(String(r.sku).trim()) < 0; });
     updateOrderListBadge();
     renderOrderList();
     render();
@@ -28056,6 +28064,16 @@ async function saveSessionSnapshot() {
 
 async function checkSnapshotVersion() {
   var resp = await sb.from('stock_sessions').select('snapshot_version').eq('id', activeSessionId).single();
+  if (resp.error) {
+    console.error('checkSnapshotVersion:', resp.error);
+    // PGRST116 = "no rows" — the active session was deleted by another device.
+    if (resp.error.code === 'PGRST116' || String(resp.error.message||'').indexOf('0 rows') >= 0) {
+      toast('⚠ Active session no longer exists in the DB. Refresh to sync.');
+    } else {
+      toast('⚠ Version check failed: ' + resp.error.message);
+    }
+    return false;
+  }
   var dbVer = (resp.data && resp.data.snapshot_version) || 0;
   if (dbVer > snapshotVersion) {
     snapshotVersion = dbVer;
