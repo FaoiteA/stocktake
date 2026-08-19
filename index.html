@@ -28340,6 +28340,26 @@ async function deleteItem(id) {
 }
 
 // ── BARCODE SCANNER ───────────────────────────────────────────────────────────
+// Short beep tone on successful scan.
+function beepScan() {
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    const ctx = new AC();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.value = 1100;
+    gain.gain.setValueAtTime(0.001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.1);
+    setTimeout(function() { try { ctx.close(); } catch(e){} }, 200);
+  } catch (e) { /* no audio available, ignore */ }
+}
+
 async function openCameraScanner() {
   document.getElementById('camera-overlay').classList.remove('hidden');
   document.getElementById('camera-status').textContent = 'Starting camera…';
@@ -28352,15 +28372,26 @@ async function openCameraScanner() {
     overlay.insertBefore(readerEl, overlay.firstChild);
   }
   try {
-    cameraScanner = new Html5Qrcode('qr-reader');
+    cameraScanner = new Html5Qrcode('qr-reader', {
+      // Use native BarcodeDetector API when available (Chrome/Edge on Android).
+      // Much more reliable than the JS fallback for 1D barcodes on cluttered labels.
+      experimentalFeatures: { useBarCodeDetectorIfSupported: true }
+    });
     const cameras = await Html5Qrcode.getCameras();
     if (!cameras || !cameras.length) throw new Error('No camera found');
     const cam = cameras.find(c => /back|rear|environment/i.test(c.label)) || cameras[cameras.length-1];
+    // Narrower scan strip — barcodes are horizontal. Forces user to aim at ONE barcode
+    // instead of grabbing whichever is in view.
     await cameraScanner.start(
       cam.id,
-      { fps: 15, qrbox: { width: 280, height: 160 }, aspectRatio: 1.7,
-        videoConstraints: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } },
-      (text) => { if (navigator.vibrate) navigator.vibrate(80); closeCameraScanner(); handleScannedSku(text); },
+      { fps: 15, qrbox: { width: 320, height: 80 }, aspectRatio: 1.7,
+        videoConstraints: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } },
+      (text) => {
+        if (navigator.vibrate) navigator.vibrate(80);
+        beepScan();
+        closeCameraScanner();
+        handleScannedSku(text);
+      },
       () => {}
     );
     document.getElementById('camera-status').textContent = 'Point at barcode…';
