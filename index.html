@@ -28387,10 +28387,19 @@ async function openCameraScanner() {
       { fps: 15, qrbox: { width: 320, height: 80 }, aspectRatio: 1.7,
         videoConstraints: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } },
       (text) => {
+        // Filter obviously-junk scans (quantity indicators like Q1, short markers).
+        // Automotive part labels often have several tiny barcodes stacked; scanner
+        // sometimes picks a Q1 quantity code instead of the SKU. Keep scanning if junk.
+        const t = String(text||'').trim();
+        if (t.length < 4 || /^[QNPHV]\d{0,2}$/i.test(t)) {
+          document.getElementById('camera-status').textContent = 'Ignored short scan: "' + t + '". Aim at the main barcode…';
+          if (navigator.vibrate) navigator.vibrate([40, 60, 40]); // triple-buzz for rejection
+          return; // keep scanner open
+        }
         if (navigator.vibrate) navigator.vibrate(80);
         beepScan();
         closeCameraScanner();
-        handleScannedSku(text);
+        handleScannedSku(t);
       },
       () => {}
     );
