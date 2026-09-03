@@ -26771,23 +26771,24 @@ function render() {
     return true;
   });
 
-  // Stats
-  const totalVal = items.reduce((s,p) => s + itemValue(p), 0);
-  const outCount = items.filter(p => p.qty === 0).length;
-  const countedCount = items.filter(p => p.counted_qty !== null).length;
-  const pct = items.length ? Math.round(countedCount / items.length * 100) : 0;
-  const deadVal = items.filter(p => p.dead_stock).reduce((s,p) => s + itemValue(p), 0);
-  const paidVal = items.filter(p => p.paid_claimed).reduce((s,p) => s + itemValue(p), 0);
+  // Stats (franchise-filtered)
+  const sItems = franchiseFilter === 'all' ? items : items.filter(p => (p.franchise || 'M') === franchiseFilter);
+  const totalVal = sItems.reduce((s,p) => s + itemValue(p), 0);
+  const outCount = sItems.filter(p => p.qty === 0).length;
+  const countedCount = sItems.filter(p => p.counted_qty !== null).length;
+  const pct = sItems.length ? Math.round(countedCount / sItems.length * 100) : 0;
+  const deadVal = sItems.filter(p => p.dead_stock).reduce((s,p) => s + itemValue(p), 0);
+  const paidVal = sItems.filter(p => p.paid_claimed).reduce((s,p) => s + itemValue(p), 0);
   const wroteVal = manualStatValues.wrote;
   const warrantyVal = manualStatValues.warranty;
   const netVal = totalVal - deadVal - paidVal;
 
-  document.getElementById('vs-total').textContent = items.length;
+  document.getElementById('vs-total').textContent = sItems.length;
   document.getElementById('vs-value').textContent = fmt(netVal);
   const grossEl = document.getElementById('vs-gross');
   if (grossEl) grossEl.textContent = fmt(netVal + deadVal + paidVal);
   document.getElementById('vs-out').textContent = outCount;
-  const lowCount = items.filter(p => p.qty > 0 && p.min_qty > 0 && p.qty <= p.min_qty).length;
+  const lowCount = sItems.filter(p => p.qty > 0 && p.min_qty > 0 && p.qty <= p.min_qty).length;
   document.getElementById('vs-low').textContent = lowCount;
   document.getElementById('vs-counted').textContent = pct + '%';
   var progEl = document.getElementById('vs-prog'); if (progEl) progEl.style.width = pct + '%';
