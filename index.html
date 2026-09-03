@@ -27469,7 +27469,7 @@ function renderDetailBody(p) {
         <label class="toggle"><input type="checkbox" ${p.system_counted?'checked':''} onchange="toggleSystemCount('${p.id}',this.checked)"/><span class="toggle-slider"></span></label>
       </div>
     </div>
-    ${p.min_qty > 0 ? `<div class="detail-row"><span class="detail-key">Low stock alert at</span><span class="detail-val amber">${p.min_qty} units</span></div>` : ''}
+    <div class="detail-section"><div class="detail-section-title">Franchise</div><div style="display:flex;gap:6px;"><button class="btn" style="flex:1;background:${(p.franchise||'M')==='M'?'var(--accent)':'var(--surface2)'};color:${(p.franchise||'M')==='M'?'#fff':'var(--text)'};" onclick="setFranchise('${p.id}','M')">M</button><button class="btn" style="flex:1;background:${p.franchise==='SUZ'?'var(--accent)':'var(--surface2)'};color:${p.franchise==='SUZ'?'#fff':'var(--text)'};" onclick="setFranchise('${p.id}','SUZ')">SUZ</button><button class="btn" style="flex:1;background:${p.franchise==='CIT'?'var(--accent)':'var(--surface2)'};color:${p.franchise==='CIT'?'#fff':'var(--text)'};" onclick="setFranchise('${p.id}','CIT')">CIT</button></div></div>${p.min_qty > 0 ? `<div class="detail-row"><span class="detail-key">Low stock alert at</span><span class="detail-val amber">${p.min_qty} units</span></div>` : ''}
     ${(p.change_log||[]).length ? `
     <div class="detail-section" style="margin-top:16px;">
       <div class="detail-section-title">Change History (last 10)</div>
@@ -27483,6 +27483,20 @@ function renderDetailBody(p) {
     <button class="btn btn-danger" style="width:100%;margin-top:8px;" onclick="resetQty('${p.id}')">Reset qty to zero</button>
     <button class="btn btn-danger" style="width:100%;margin-top:8px;opacity:0.7;" onclick="deleteItem('${p.id}')">Delete item</button>
   `;
+}
+
+async function setFranchise(id, val) {
+  const p = items.find(x => x.id === id);
+  if (!p) return;
+  const prev = p.franchise || 'M';
+  if (prev === val) return;
+  p.franchise = val;
+  renderDetailBody(p);
+  showSync();
+  const { error } = await sb.from('stock_items').update({ franchise: val }).eq('id', id);
+  hideSync();
+  if (error) { p.franchise = prev; renderDetailBody(p); toast('Sync error: ' + error.message); }
+  else { toast('Franchise: ' + val); }
 }
 
 async function adjQty(id, delta, reason) {
