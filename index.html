@@ -26235,6 +26235,12 @@ async function init() {
   loadManualStatValues();
   const cfg = getConfig();
   if (!cfg) { hide('loading-overlay'); show('config-screen'); return; }
+  window.franchiseFilter = 'all';
+  window.setFranchiseFilter = function(f) {
+    window.franchiseFilter = f;
+    document.querySelectorAll('.fr-tab').forEach(el => el.classList.toggle('active', el.dataset.f === f));
+    if (typeof render === 'function') render();
+  };
   sb = window.supabase.createClient(cfg.url, cfg.key);
   await handlePasswordRecovery();
   const { data: { session } } = await sb.auth.getSession();
@@ -26772,7 +26778,7 @@ function render() {
   });
 
   // Stats (franchise-filtered)
-  const sItems = franchiseFilter === 'all' ? items : items.filter(p => (p.franchise || 'M') === franchiseFilter);
+  const sItems = window.franchiseFilter === 'all' ? items : items.filter(p => (p.franchise || 'M') === window.franchiseFilter);
   const totalVal = sItems.reduce((s,p) => s + itemValue(p), 0);
   const outCount = sItems.filter(p => p.qty === 0).length;
   const countedCount = sItems.filter(p => p.counted_qty !== null).length;
