@@ -26859,6 +26859,7 @@ function render() {
         <div class="part-meta">
           ${p.name && p.name !== p.sku ? `<span class="part-desc">${esc(p.name)}</span>` : ''}
           ${p.location ? `<span class="part-loc">📍 ${esc(p.location)}</span>` : ''}
+          ${p.franchise && p.franchise !== 'M' ? `<span class="part-loc" style="background:${p.franchise==='SUZ'?'rgba(0,120,255,0.18)':'rgba(220,50,50,0.18)'};border-color:${p.franchise==='SUZ'?'rgba(0,120,255,0.5)':'rgba(220,50,50,0.5)'};color:${p.franchise==='SUZ'?'#6ab5ff':'#ff8a8a'};">${p.franchise}</span>` : ''}
           ${p.area ? `<span class="part-loc" style="background:rgba(168,85,247,0.15);border-color:rgba(168,85,247,0.3);color:#d8b4fe;">${esc(p.area)}</span>` : ''}
           ${p.cost ? `<span class="part-cost"><span class="cost-lbl">Cost:</span> €${Number(p.cost).toFixed(2)}</span><span class="part-cost"><span class="cost-lbl">Total:</span> ${fmt(val)}</span>` : ''}
           ${(window.viewMode !== 'session' && p.last_count !== null && p.last_count !== undefined) ? `<span class="part-prev" title="Quantity at last stock take">Prev: ${p.last_count}</span>` : ''}
