@@ -29617,7 +29617,7 @@ async function saveSession() {
   const outCount = items.filter(p=>p.qty===0).length;
   // Save snapshot of current stock with quantities reset to zero for counting
   // Store original qty as system_qty for later discrepancy comparison
-  const snapshot = items.map(p => ({ id:p.id, sku:p.sku, name:p.name, qty:0, system_qty:p.qty||0, cost:p.cost, location:p.location, area:p.area, dead_stock:p.dead_stock, wrote_off:p.wrote_off, paid_claimed:p.paid_claimed, counted_qty:null, system_counted:false, manually_counted:false, min_qty:p.min_qty||0, change_log:[] }));
+  const snapshot = items.map(p => ({ id:p.id, sku:p.sku, name:p.name, qty:0, system_qty:p.qty||0, cost:p.cost, location:p.location, area:p.area, dead_stock:p.dead_stock, wrote_off:p.wrote_off, paid_claimed:p.paid_claimed, counted_qty:null, system_counted:false, manually_counted:false, min_qty:p.min_qty||0, change_log:[], franchise:p.franchise||'M' }));
   const sessionData = {
     name,
     notes: document.getElementById('ns-notes').value.trim(),
