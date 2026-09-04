@@ -28927,6 +28927,20 @@ function openReport() {
       ${discos.length?`<div class="report-row"><span class="report-key">Top discrepancies</span><span class="report-val" style="font-size:12px;text-align:right;">${discos.slice(0,3).map(p=>`${p.sku}: ${p.qty}→${displayCounted(p)}`).join('<br>')}</span></div>`:''}
     </div>
     <div class="report-section">
+      <div class="report-title">By Franchise</div>
+      ${['M','SUZ','CIT'].map(fr => {
+        const fItems = items.filter(p => (p.franchise || 'M') === fr);
+        if (!fItems.length) return '';
+        const fGross = fItems.reduce((s,p) => s + itemValue(p), 0);
+        const fDead = fItems.filter(p => p.dead_stock).reduce((s,p) => s + itemValue(p), 0);
+        const fPaid = fItems.filter(p => p.paid_claimed).reduce((s,p) => s + itemValue(p), 0);
+        const fNet = fGross - fDead - fPaid;
+        const fCounted = fItems.filter(p => p.counted_qty !== null).length;
+        const fPct = fItems.length ? Math.round(fCounted / fItems.length * 100) : 0;
+        return '<div class="report-row"><span class="report-key">' + fr + '</span><span class="report-val">' + fItems.length + ' parts · ' + fmt(fNet) + ' net · ' + fPct + '% counted</span></div>';
+      }).join('')}
+    </div>
+    <div class="report-section">
       <div class="report-title">By Area</div>
       ${Object.entries(areaMap).sort((a,b)=>b[1].value-a[1].value).map(([a,v])=>`
         <div class="report-row"><span class="report-key">${esc(a)}</span><span class="report-val">${fmt(v.value)} (${v.count})</span></div>
