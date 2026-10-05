@@ -25946,6 +25946,10 @@ CREATE TRIGGER stock_items_updated_at
       <p style="color:var(--text2);font-size:13px;margin:0 0 12px;">Upload the Autoview CSV or the DMS Stock Valuation report.</p>
       <input type="file" id="dms-file" onchange="runPriceCheck(this.files[0])" style="display:none;">
       <button class="btn btn-primary" style="width:100%;" onclick="document.getElementById('dms-file').click()">Choose DMS CSV or Report</button>
+      <div style="margin:16px 0 10px;padding-top:16px;border-top:1px solid var(--border);font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">Or bulk update prices + descriptions</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:10px;">Upload a stock sheet (xlsx or csv) with Part Number, Description, Cost. Updates the active stock take only.</div>
+      <input type="file" id="sheet-file" accept=".xlsx,.xls,.csv" onchange="runBulkSheetUpdate(this.files[0])" style="display:none;">
+      <button class="btn btn-primary" style="width:100%;background:#8aff8a;color:#000;" onclick="document.getElementById('sheet-file').click()">📋 Choose Stock Sheet</button>
     </div>
     <div id="price-results" style="display:none;padding:0 16px 16px;"></div>
   </div>
@@ -27590,6 +27594,74 @@ function parseDmsCsv(text) {
 
 window._pcMismatches = [];
 window._pcReviewed = 0;
+
+function runBulkSheetUpdate(file) {
+  if (!file) return;
+  if (window.viewMode !== 'session' || !activeSessionId) {
+    toast('Open an active stock take first'); return;
+  }
+  var ext = file.name.split('.').pop().toLowerCase();
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var sheetRows;
+    try {
+      if (ext === 'xlsx' || ext === 'xls') {
+        var wb = XLSX.read(e.target.result, { type: 'array' });
+        var ws = wb.Sheets[wb.SheetNames[0]];
+        sheetRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+      } else {
+        sheetRows = e.target.result.split(/\r?\n/).map(function(l) { return parseCsvLine(l); });
+      }
+    } catch (err) { toast('Could not read file: ' + err.message); return; }
+    if (!sheetRows || sheetRows.length < 2) { toast('File is empty'); return; }
+    var headers = sheetRows[0].map(function(h) { return String(h||'').toLowerCase().trim(); });
+    var skuCol = headers.findIndex(function(h){return ['part number','partnumber','sku','part no'].some(function(k){return h.indexOf(k)>=0;});});
+    var nameCol = headers.findIndex(function(h){return ['part description','description','name','part name'].some(function(k){return h.indexOf(k)>=0;});});
+    var costCol = headers.findIndex(function(h){return h.indexOf('cost')>=0 || h.indexOf('price')>=0;});
+    if (skuCol === -1) skuCol = 0;
+    if (nameCol === -1) nameCol = 1;
+    if (costCol === -1) costCol = sheetRows[0].length - 1;
+    var sheetMap = {};
+    for (var i = 1; i < sheetRows.length; i++) {
+      var row = sheetRows[i]; if (!row) continue;
+      var sku = String(row[skuCol]||'').trim(); if (!sku) continue;
+      var costRaw = row[costCol];
+      var cost = typeof costRaw === 'number' ? costRaw : parseFloat(String(costRaw||'').replace(/[^0-9.-]/g,'')) || 0;
+      var name = String(row[nameCol]||'').trim();
+      var key = sku.toUpperCase();
+      sheetMap[key] = { sku: sku, name: name, cost: cost };
+      var stripped = key.replace(/^0+(?=.)/, '');
+      if (stripped !== key && !sheetMap[stripped]) sheetMap[stripped] = sheetMap[key];
+    }
+    var updated = 0, unchanged = 0, notInSheet = 0;
+    items.forEach(function(p) {
+      var k = (p.sku||'').trim().toUpperCase();
+      var sh = sheetMap[k];
+      if (!sh) { notInSheet++; return; }
+      var changed = false;
+      if (Math.round((p.cost||0)*100) !== Math.round(sh.cost*100)) { p.cost = sh.cost; changed = true; }
+      if (sh.name && sh.name !== p.name) { p.name = sh.name; changed = true; }
+      p.price_source = 'sheet';
+      if (changed) updated++; else unchanged++;
+    });
+    if (updated + unchanged === 0) { toast('No matching SKUs found in sheet'); return; }
+    if (!confirm('Found '+(updated+unchanged)+' matches:\n\n'+updated+' will be updated\n'+unchanged+' already match (flagged as reviewed)\n'+notInSheet+' parts not in sheet\n\nApply to active stock take?')) {
+      items.forEach(function(p) { if (p.price_source === 'sheet') delete p.price_source; });
+      toast('Cancelled'); return;
+    }
+    showSync();
+    saveSessionSnapshot().then(function() {
+      hideSync();
+      toast('Updated '+updated+' prices, flagged '+(updated+unchanged)+' as reviewed');
+      render();
+      closeSheet('price');
+    }).catch(function(err) {
+      hideSync(); toast('Save failed: '+err.message);
+    });
+  };
+  if (ext === 'xlsx' || ext === 'xls') reader.readAsArrayBuffer(file);
+  else reader.readAsText(file);
+}
 
 function runPriceCheck(file) {
   if (!file) return;
