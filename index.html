@@ -26864,6 +26864,7 @@ function render() {
           ${p.name && p.name !== p.sku ? `<span class="part-desc">${esc(p.name)}</span>` : ''}
           ${p.location ? `<span class="part-loc">📍 ${esc(p.location)}</span>` : ''}
           ${(() => { const f = p.franchise || 'CIT'; const colors = { SUZ:['rgba(0,120,255,0.18)','rgba(0,120,255,0.5)','#6ab5ff'], CIT:['rgba(120,220,120,0.18)','rgba(120,220,120,0.5)','#8aff8a'], M:['rgba(220,50,50,0.18)','rgba(220,50,50,0.5)','#ff8a8a'] }; const c = colors[f] || colors.CIT; return `<span class="part-loc" style="background:${c[0]};border-color:${c[1]};color:${c[2]};">${f}</span>`; })()}
+          ${(() => { const ps = p.price_source; let bg,bc,tc,label,title; if (ps==='sheet') { bg='rgba(120,220,120,0.18)'; bc='rgba(120,220,120,0.5)'; tc='#8aff8a'; label='✓ Sheet'; title='Updated from sheet - tap to mark manual'; } else if (ps==='manual') { bg='rgba(60,180,255,0.18)'; bc='rgba(60,180,255,0.5)'; tc='#5ab5ff'; label='✓ Manual'; title='Manually reviewed - tap to clear'; } else { bg='rgba(255,180,50,0.12)'; bc='rgba(255,180,50,0.4)'; tc='#f5b041'; label='? Review'; title='Not reviewed - tap to mark manual'; } return `<span class="part-loc" style="background:${bg};border-color:${bc};color:${tc};cursor:pointer;" title="${title}" onclick="event.stopPropagation();togglePriceReview('${p.id}',event)">${label}</span>`; })()}
           ${p.area ? `<span class="part-loc" style="background:rgba(168,85,247,0.15);border-color:rgba(168,85,247,0.3);color:#d8b4fe;">${esc(p.area)}</span>` : ''}
           ${p.cost ? `<span class="part-cost"><span class="cost-lbl">Cost:</span> €${Number(p.cost).toFixed(2)}</span><span class="part-cost"><span class="cost-lbl">Total:</span> ${fmt(val)}</span>` : ''}
           ${(window.viewMode !== 'session' && p.last_count !== null && p.last_count !== undefined) ? `<span class="part-prev" title="Quantity at last stock take">Prev: ${p.last_count}</span>` : ''}
@@ -27654,13 +27655,28 @@ function runBulkSheetUpdate(file) {
       hideSync();
       toast('Updated '+updated+' prices, flagged '+(updated+unchanged)+' as reviewed');
       render();
-      closeSheet('price');
+      closePriceCheck();
     }).catch(function(err) {
       hideSync(); toast('Save failed: '+err.message);
     });
   };
   if (ext === 'xlsx' || ext === 'xls') reader.readAsArrayBuffer(file);
   else reader.readAsText(file);
+}
+
+async function togglePriceReview(id, ev) {
+  if (ev) { ev.stopPropagation(); ev.preventDefault(); }
+  if (window.viewMode !== 'session' || !activeSessionId) { toast('Open an active stock take first'); return; }
+  var p = items.find(function(x) { return x.id === id; });
+  if (!p) return;
+  var cur = p.price_source || null;
+  if (cur === null) p.price_source = 'manual';
+  else if (cur === 'manual') delete p.price_source;
+  else if (cur === 'sheet') p.price_source = 'manual';
+  render();
+  showSync();
+  try { await saveSessionSnapshot(); } catch(e) { toast('Save failed: '+e.message); }
+  hideSync();
 }
 
 function runPriceCheck(file) {
