@@ -25943,6 +25943,28 @@ CREATE TRIGGER stock_items_updated_at
   <div class="loc-panel" style="max-width:650px;max-height:85vh;overflow-y:auto;" onclick="event.stopPropagation()">
     <div class="loc-panel-title" style="display:flex;justify-content:space-between;align-items:center;">Price Check — DMS Compare<span onclick="closePriceCheck()" style="cursor:pointer;font-size:18px;color:var(--text3);padding:4px 8px;">✕</span></div>
     <div id="price-upload" style="padding:16px;">
+      <details style="margin-bottom:14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 12px;">
+        <summary style="cursor:pointer;font-size:13px;font-weight:600;color:var(--text);padding:4px 0;">ℹ️ How to use Price Check</summary>
+        <div style="font-size:12px;color:var(--text2);line-height:1.5;margin-top:10px;">
+          <div style="font-weight:700;color:var(--text);margin-top:4px;margin-bottom:4px;">📄 DMS CSV / Report (per-row compare)</div>
+          Upload the Autoview CSV or the DMS Stock Valuation report. Shows each price difference so you Accept or Keep one by one, or bulk Accept All. Writes to live stock in normal mode, or to the active stock take in session mode.
+          <div style="font-weight:700;color:var(--text);margin-top:12px;margin-bottom:4px;">📋 Choose Stock Sheet (bulk update)</div>
+          Upload any xlsx/csv with Part Number, Description, Cost. Matches on SKU, updates cost and description, flags every match as reviewed (✓ Sheet badge on list). <b>Session only</b> — does not touch live stock. Non-matches stay un-flagged (? Review badge) so you can tap through them manually.
+          <div style="font-weight:700;color:var(--text);margin-top:12px;margin-bottom:4px;">🔧 Exporting the Autoview CSV from DMS</div>
+          <ol style="padding-left:18px;margin:4px 0;">
+            <li>Parts → Management → Xtra Slide → Create Report</li>
+            <li>Reset → Query</li>
+            <li><b>In Stock</b> box: type <code style="background:var(--surface2);padding:1px 5px;border-radius:3px;">1:</code> (parts with qty 1 or more)</li>
+            <li><b>Location</b> box: type <code style="background:var(--surface2);padding:1px 5px;border-radius:3px;">!</code> (parts that have a location)</li>
+            <li>Save as CSV and upload here</li>
+          </ol>
+          <div style="color:var(--text3);font-size:11px;margin-top:4px;">Change the criteria to suit — e.g. widen qty range or drop the location filter.</div>
+          <div style="font-weight:700;color:var(--text);margin-top:12px;margin-bottom:4px;">🏷️ Badge meanings on the main list</div>
+          <div><span style="display:inline-block;padding:1px 6px;border-radius:4px;background:rgba(120,220,120,0.18);color:#8aff8a;font-size:11px;font-weight:700;">✓ Sheet</span> updated from spreadsheet</div>
+          <div><span style="display:inline-block;padding:1px 6px;border-radius:4px;background:rgba(60,180,255,0.18);color:#5ab5ff;font-size:11px;font-weight:700;">✓ Manual</span> you reviewed it manually</div>
+          <div><span style="display:inline-block;padding:1px 6px;border-radius:4px;background:rgba(255,180,50,0.12);color:#f5b041;font-size:11px;font-weight:700;">? Review</span> not reviewed — tap to mark done</div>
+        </div>
+      </details>
       <p style="color:var(--text2);font-size:13px;margin:0 0 12px;">Upload the Autoview CSV or the DMS Stock Valuation report.</p>
       <input type="file" id="dms-file" onchange="runPriceCheck(this.files[0])" style="display:none;">
       <button class="btn btn-primary" style="width:100%;" onclick="document.getElementById('dms-file').click()">Choose DMS CSV or Report</button>
