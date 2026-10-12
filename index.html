@@ -28054,13 +28054,17 @@ function exportPriceDiffs() {
 async function quickCount(id) {
   var p = items.find(function(x) { return x.id === id; });
   if (!p) return;
-  p.manually_counted = !p.manually_counted;
-  if (p.manually_counted || p.system_counted) {
-    p.counted_qty = p.qty;
-    p.last_counted = new Date().toISOString();
-  } else {
+  var wasCounted = p.manually_counted || p.system_counted;
+  if (wasCounted) {
+    p.manually_counted = false;
+    p.system_counted = false;
     p.counted_qty = null;
     p.last_counted = null;
+  } else {
+    p.manually_counted = true;
+    p.system_counted = true;
+    p.counted_qty = p.qty;
+    p.last_counted = new Date().toISOString();
   }
   if (window.viewMode === 'session' && activeSessionId) {
     await saveSessionItem(id);
@@ -28069,6 +28073,7 @@ async function quickCount(id) {
     await sb.from('stock_items').update({ counted_qty: p.counted_qty, last_counted: p.last_counted }).eq('id', id);
     hideSync();
   }
+  if (editId === id) renderDetailBody(p);
   render();
 }
 
@@ -28156,7 +28161,8 @@ async function toggleSystemCount(id, checked) {
   const p = items.find(x => x.id === id);
   if (!p) return;
   p.system_counted = checked;
-  if (checked || p.manually_counted) {
+  p.manually_counted = checked;
+  if (checked) {
     p.counted_qty = p.qty;
     p.last_counted = new Date().toISOString();
   } else {
@@ -28173,7 +28179,7 @@ async function toggleSystemCount(id, checked) {
   }
   if (editId === id) renderDetailBody(p);
   render();
-  toast(checked ? 'Marked as system count' : 'System count removed');
+  toast(checked ? 'Marked as counted' : 'Count removed');
 }
 
 async function saveSessionSnapshot() {
