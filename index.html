@@ -28419,20 +28419,38 @@ async function saveItem() {
     var dupResp = await sb.from('stock_items').select('id,sku,name').ilike('sku', sku.trim()).limit(1);
     if (dupResp.data && dupResp.data.length > 0) { toast('\u26a0 SKU already in database: ' + (dupResp.data[0].name || dupResp.data[0].sku)); return; }
   }
+  var isSession = window.viewMode === 'session' && activeSessionId;
   showSync();
   if (editId) {
-    const { error } = await sb.from('stock_items').update(data).eq('id', editId);
-    hideSync();
-    if (error) { toast('Error: '+error.message); return; }
-    const i = items.findIndex(x => x.id === editId);
-    if (i !== -1) items[i] = {...items[i], ...data};
-    toast('Item updated');
+    if (isSession) {
+      const i = items.findIndex(x => x.id === editId);
+      if (i !== -1) items[i] = {...items[i], ...data};
+      await saveSessionSnapshot();
+      hideSync();
+      toast('Item updated (stock take only)');
+    } else {
+      const { error } = await sb.from('stock_items').update(data).eq('id', editId);
+      hideSync();
+      if (error) { toast('Error: '+error.message); return; }
+      const i = items.findIndex(x => x.id === editId);
+      if (i !== -1) items[i] = {...items[i], ...data};
+      toast('Item updated');
+    }
   } else {
-    const { data: ins, error } = await sb.from('stock_items').insert(data).select().single();
-    hideSync();
-    if (error) { toast('Error: '+error.message); return; }
-    items.push(ins);
-    toast('Item added');
+    if (isSession) {
+      var newId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : ('tmp-' + Date.now() + '-' + Math.random().toString(36).slice(2,8));
+      var ins = Object.assign({ id: newId, counted_qty: data.qty, system_counted: true, manually_counted: true, last_counted: new Date().toISOString(), change_log: [], franchise: 'CIT', system_qty: 0 }, data);
+      items.push(ins);
+      await saveSessionSnapshot();
+      hideSync();
+      toast('Item added (stock take only)');
+    } else {
+      const { data: ins, error } = await sb.from('stock_items').insert(data).select().single();
+      hideSync();
+      if (error) { toast('Error: '+error.message); return; }
+      items.push(ins);
+      toast('Item added');
+    }
   }
   closeForm(); render();
 }
@@ -28459,22 +28477,30 @@ async function resetQty(id) {
 
 async function deleteItem(id) {
   if (!confirm('Delete this item?')) return;
-  showSync();
-  const { error } = await sb.from('stock_items').delete().eq('id', id);
-  hideSync();
-  if (error) { toast('Error: '+error.message); return; }
+  var isSession = window.viewMode === 'session' && activeSessionId;
   const deleted = items.find(x => x.id === id);
-  items = items.filter(x => x.id !== id);
-  if (window.viewMode === 'session' && activeSessionId) {
-    var s = sessions.find(function(x) { return x.id === activeSessionId; });
-    if (s && s.snapshot) s.snapshot = s.snapshot.filter(function(x) { return x.id !== id; });
+  showSync();
+  if (isSession) {
+    items = items.filter(x => x.id !== id);
     await saveSessionSnapshot();
+    hideSync();
+  } else {
+    const { error } = await sb.from('stock_items').delete().eq('id', id);
+    hideSync();
+    if (error) { toast('Error: '+error.message); return; }
+    items = items.filter(x => x.id !== id);
   }
   closeDetail(); render();
   showUndo(`Deleted ${deleted?.name||deleted?.sku||'item'}`, async () => {
     if (!deleted) return;
-    const { data, error } = await sb.from('stock_items').insert(deleted).select().single();
-    if (!error && data) { items.push(data); render(); toast('Undo — item restored'); }
+    if (isSession) {
+      items.push(deleted);
+      await saveSessionSnapshot();
+      render(); toast('Undo — item restored');
+    } else {
+      const { data, error } = await sb.from('stock_items').insert(deleted).select().single();
+      if (!error && data) { items.push(data); render(); toast('Undo — item restored'); }
+    }
   });
 }
 
