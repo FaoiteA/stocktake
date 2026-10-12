@@ -28254,6 +28254,8 @@ async function saveCounted(id) {
   if (!p) return;
   p.counted_qty = counted;
   p.last_counted = new Date().toISOString();
+  p.manually_counted = true;
+  p.system_counted = true;
   if (window.viewMode === 'session' && activeSessionId) {
     // Fix: also update qty so value calcs reflect the counted value
     p.qty = counted;
