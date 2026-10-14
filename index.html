@@ -736,6 +736,7 @@ CREATE TRIGGER stock_items_updated_at
     <button class="tab" id="tab-out" onclick="setTab(&#39;out&#39;)">Out of Stock</button>
     <button class="tab" id="tab-dead" onclick="setTab(&#39;dead&#39;)">Dead Stock</button>
     <button class="tab" id="tab-counted" onclick="setTab(&#39;counted&#39;)">Counted</button>
+    <button class="tab" id="tab-uncounted" onclick="setTab(&#39;uncounted&#39;)">Uncounted</button>
     <button class="tab" id="tab-disc" onclick="setTab(&#39;disc&#39;)">Discrepancies</button>
     <button class="tab" id="tab-wrote" onclick="setTab(&#39;wrote&#39;)">Wrote Off</button>
     <button class="tab" id="tab-low" onclick="setTab(&#39;low&#39;)">Low Stock</button>
@@ -26770,6 +26771,7 @@ function render() {
     if (tab === 'out' && p.qty > 0) return false;
     if (tab === 'dead' && !p.dead_stock) return false;
     if (tab === 'counted' && p.counted_qty === null) return false;
+    if (tab === 'uncounted' && p.counted_qty !== null && p.counted_qty !== undefined) return false;
     if (tab === 'disc' && !hasDisco(p)) return false;
     if (tab === 'wrote' && !p.wrote_off) return false;
     if (tab === 'low' && !(p.qty > 0 && p.min_qty > 0 && p.qty <= p.min_qty)) return false;
