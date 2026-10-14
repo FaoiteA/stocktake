@@ -26771,7 +26771,7 @@ function render() {
     if (tab === 'out' && p.qty > 0) return false;
     if (tab === 'dead' && !p.dead_stock) return false;
     if (tab === 'counted' && p.counted_qty === null) return false;
-    if (tab === 'uncounted' && p.counted_qty !== null && p.counted_qty !== undefined) return false;
+    if (tab === 'uncounted' && ((p.counted_qty !== null && p.counted_qty !== undefined) || p.manually_counted || p.system_counted)) return false;
     if (tab === 'disc' && !hasDisco(p)) return false;
     if (tab === 'wrote' && !p.wrote_off) return false;
     if (tab === 'low' && !(p.qty > 0 && p.min_qty > 0 && p.qty <= p.min_qty)) return false;
