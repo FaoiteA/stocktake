@@ -29460,13 +29460,24 @@ async function pushToLive(id, name) {
 
   // Dedupe snapshot by SKU. For duplicate SKUs, keep the row with the highest effective qty.
   const bySku = new Map();
-  let skippedNoSku = 0, skippedNoId = 0;
+  let skippedNoSku = 0, skippedNoId = 0, mergedDupes = 0;
   for (const p of s.snapshot) {
     if (!p.id) { skippedNoId++; continue; }
     if (!p.sku || !String(p.sku).trim()) { skippedNoSku++; continue; }
     const key = String(p.sku).trim();
     const existing = bySku.get(key);
-    if (!existing || effQty(p) > effQty(existing)) bySku.set(key, p);
+    if (!existing) {
+      bySku.set(key, Object.assign({}, p));
+    } else {
+      mergedDupes++;
+      existing.qty = (Number(existing.qty)||0) + (Number(p.qty)||0);
+      const eC = existing.counted_qty, pC = p.counted_qty;
+      if (eC !== null && eC !== undefined && pC !== null && pC !== undefined) {
+        existing.counted_qty = Number(eC) + Number(pC);
+      } else if (pC !== null && pC !== undefined && (eC === null || eC === undefined)) {
+        existing.counted_qty = Number(pC);
+      }
+    }
   }
 
   // Build the rows to insert
@@ -29487,7 +29498,11 @@ async function pushToLive(id, name) {
       min_qty: Number(p.min_qty) || 0,
       change_log: p.change_log || [],
       last_counted: new Date().toISOString(),
-      last_count: q
+      last_count: q,
+      franchise: p.franchise || 'CIT',
+      price_source: p.price_source || null,
+      manually_counted: !!p.manually_counted,
+      system_counted: !!p.system_counted
     };
   });
 
@@ -29497,8 +29512,8 @@ async function pushToLive(id, name) {
   const paidVal  = rows.filter(p => p.paid_claimed).reduce((sum, p) => sum + (p.qty * p.cost), 0);
   const netVal   = grossVal - deadVal - paidVal;
 
-  const skipMsg = (skippedNoSku || skippedNoId)
-    ? `\n\n⚠ Skipped: ${skippedNoSku} no-SKU, ${skippedNoId} no-ID`
+  const skipMsg = (skippedNoSku || skippedNoId || mergedDupes)
+    ? `\n\n⚠ Skipped: ${skippedNoSku} no-SKU, ${skippedNoId} no-ID` + (mergedDupes ? `\n➕ Merged ${mergedDupes} duplicate SKU row(s) — qtys summed` : '')
     : '';
 
   if (!confirm(
