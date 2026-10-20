@@ -29078,7 +29078,7 @@ function openReport() {
         const fNet = fGross - fDead - fPaid;
         const fCounted = fItems.filter(p => p.counted_qty !== null).length;
         const fPct = fItems.length ? Math.round(fCounted / fItems.length * 100) : 0;
-        return '<div class="report-row"><span class="report-key">' + fr + '</span><span class="report-val">' + fItems.length + ' parts · ' + fmt(fNet) + ' net · ' + fPct + '% counted</span></div>';
+        return '<div class="report-row"><span class="report-key">' + fr + '</span><span class="report-val">' + fItems.length + ' parts · Net ' + fmt(fNet) + ' · Dead ' + fmt(fDead) + ' · Total ' + fmt(fGross) + ' · ' + fPct + '% counted</span></div>';
       }).join('')}
     </div>
     <div class="report-section">
